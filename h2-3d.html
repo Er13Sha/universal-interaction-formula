@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H + H в 3D — два атома водорода и их взаимодействие</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; background: #000; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #ui {
+      position: absolute; top: 12px; left: 12px;
+      color: #fff; font-family: "Courier New", monospace;
+      text-shadow: 2px 2px 4px #000; line-height: 1.42; white-space: pre;
+      user-select: none; pointer-events: none; font-size: 12px;
+    }
+    #hint {
+      position: absolute; top: 12px; right: 12px;
+      color: #7f93a8; font-family: "Courier New", monospace;
+      font-size: 12px; line-height: 1.45; text-align: right; white-space: pre;
+      pointer-events: none; text-shadow: 1px 1px 3px #000;
+    }
+    #warn {
+      position: absolute; right: 12px; bottom: 14px;
+      color: #8fa2b5; font-family: "Courier New", monospace;
+      opacity: .8; max-width: 440px; line-height: 1.3; font-size: 10px;
+      white-space: pre-wrap; pointer-events: none; text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui"></div>
+  <div id="hint"></div>
+  <div id="warn"></div>
+  <canvas id="c"></canvas>
+
+<script type="module">
+// Два атома водорода в 3D. Электроны связаны оболочкой r0, но
+// взаимодействуют со всеми зарядами: e–e, e–p, p–p.
+// Между атомами — приталкивание БГП.
+// Камера: drag — вращение, колесо — масштаб.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+const hint = document.getElementById('hint');
+const warn = document.getElementById('warn');
+
+const P = {
+  K: 1.0,
+  G: 2.4e-43,
+  Ks: 0.0,
+  Cs: 0.0,
+  Rf: 1.0,
+  kField: 250.0,
+  cRes: 0.5,
+  kDef: 1.5,
+  r0: 1.0,
+  B: 150,
+  Rs: 0.6,
+  RsE: 1.15,
+  core: 1000.0,
+  dampP: 0.02,
+  dampE: 0.002,
+  focal: 620,
+  camR: 6.2,
+  tx: 0, ty: 0, tz: 0, camSpeed: 4,
+  ox: 0, oy: 0, oz: 0,
+  yaw: 0.5,
+  pitch: 0.28,
+  paused: false,
+  timeScale: 1.0,
+  showField: true,
+};
+
+const M_P = 1836, M_E = 1;
+
+function randDir() {
+  const u = Math.random(), v = Math.random();
+  const th = 2 * Math.PI * u, ph = Math.acos(2 * v - 1);
+  const s = Math.sin(ph);
+  return [Math.cos(th) * s, Math.sin(th) * s, Math.cos(ph)];
+}
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function norm(a) {
+  const l = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+}
+
+const NDIR = 1024;
+const BGP_DIRS = [];
+for (let i = 0; i < NDIR; i++) {
+  const y = 1 - 2 * (i + 0.5) / NDIR;
+  const rr = Math.sqrt(1 - y * y);
+  const th = i * 2.399963229728653;
+  BGP_DIRS.push([Math.cos(th) * rr, y, Math.sin(th) * rr]);
+}
+function bgpInwardAt(r, rad = P.Rs) {
+  const sinS = rad / r;
+  if (sinS >= 1) return 0;
+  const cosT = Math.sqrt(1 - sinS * sinS);
+  const dOm = 4 * Math.PI / BGP_DIRS.length;
+  let fx = 0;
+  for (const d of BGP_DIRS) if (-d[0] <= cosT) fx += d[0];
+  return (P.B * dOm / M_P) * fx;
+}
+P.vOrb = Math.sqrt((P.K + P.G * M_P) / P.r0);
+function makeParts() {
+  const R = 2.4;
+  const v0 = P.vOrb;
+  const parts = [
+    { id: 'p0', kind: 'p', atom: 0, m: M_P, q: +1, p: [0, 0, 0], v: [0, 0, 0] },
+  ];
+  for (const atom of [0]) {
+    const base = parts[atom].p;
+    const n = norm(randDir());
+    const u = norm(cross(n, randDir()));
+    const v = norm(cross(n, u));
+    const pos = [base[0] + u[0] * P.r0, base[1] + u[1] * P.r0, base[2] + u[2] * P.r0];
+    const tang = norm(cross(n, u));
+    parts.push({
+      id: 'e' + atom, kind: 'e', atom, m: M_E, q: -1,
+      p: pos, v: [tang[0] * v0, tang[1] * v0, tang[2] * v0], trail: [],
+    });
+  }
+  return parts;
+}
+let parts = makeParts();
+let time = 0;
+let pairStart = 0, pairLife = 0;
+let nextAtom = 1;
+
+function addAtom() {
+  const atom = nextAtom++;
+  const d = randDir();
+  const r = 2.3 + Math.random() * 1.2;
+  const base = [d[0] * r, d[1] * r * 0.4, d[2] * r];
+  const n = norm(randDir());
+  const u = norm(cross(n, randDir()));
+  const v0 = P.vOrb;
+  const t = norm(cross(n, u));
+  parts.push(
+    { kind: 'p', atom, m: M_P, q: 1, p: base, v: [0, 0, 0] },
+    { kind: 'e', atom, m: M_E, q: -1,
+      p: [base[0] + u[0] * P.r0, base[1] + u[1] * P.r0, base[2] + u[2] * P.r0],
+      v: [t[0] * v0, t[1] * v0, t[2] * v0], trail: [] }
+  );
+}
+function removeAtom() {
+  const protons = parts.filter((q) => q.kind === 'p');
+  if (protons.length <= 1) return;
+  const last = protons[protons.length - 1];
+  const ei = parts.findIndex((q) => q.kind === 'e' && q.atom === last.atom);
+  if (ei >= 0) parts.splice(ei, 1);
+  const pi = parts.indexOf(last);
+  if (pi >= 0) parts.splice(pi, 1);
+}
+function addElectron() {
+  const pr = parts.find((q) => q.kind === 'p');
+  const e0 = pr ? parts.find((q) => q.kind === 'e' && q.atom === pr.atom) : null;
+  if (pr && e0) {
+    let ux = e0.p[0] - pr.p[0], uy = e0.p[1] - pr.p[1], uz = e0.p[2] - pr.p[2];
+    const r0 = Math.hypot(ux, uy, uz) || P.r0;
+    ux /= r0; uy /= r0; uz /= r0;
+    let vx = e0.v[0] - pr.v[0], vy = e0.v[1] - pr.v[1], vz = e0.v[2] - pr.v[2];
+    const dotv = vx * ux + vy * uy + vz * uz;
+    let tx = vx - dotv * ux, ty = vy - dotv * uy, tz = vz - dotv * uz;
+    let tm = Math.hypot(tx, ty, tz);
+    if (tm < 1e-6) { tx = uy; ty = -ux; tz = 0; tm = Math.hypot(tx, ty, tz) || 1; }
+    tx /= tm; ty /= tm; tz /= tm;
+    const nx = uy*tz - uz*ty, ny = uz*tx - ux*tz, nz = ux*ty - uy*tx;
+    const nl = Math.hypot(nx, ny, nz) || 1;
+    const nux = nx/nl, nuy = ny/nl, nuz = nz/nl;
+    const ang = 2*Math.PI/3, ca = Math.cos(ang), sa = Math.sin(ang);
+    const cx = nuy*uz - nuz*uy, cy = nuz*ux - nux*uz, cz = nux*uy - nuy*ux;
+    let u2x = ux*ca + cx*sa, u2y = uy*ca + cy*sa, u2z = uz*ca + cz*sa;
+    const u2l = Math.hypot(u2x, u2y, u2z) || 1;
+    u2x/=u2l; u2y/=u2l; u2z/=u2l;
+    let t2x = nuy*u2z - nuz*u2y, t2y = nuz*u2x - nux*u2z, t2z = nux*u2y - nuy*u2x;
+    const t2l = Math.hypot(t2x, t2y, t2z) || 1;
+    t2x/=t2l; t2y/=t2l; t2z/=t2l;
+    e0.p[0] = pr.p[0] + ux * r0; e0.p[1] = pr.p[1] + uy * r0; e0.p[2] = pr.p[2] + uz * r0;
+    e0.v[0] = 0; e0.v[1] = 0; e0.v[2] = 0;
+    const eNew = {
+      kind: 'e', atom: pr.atom, m: M_E, q: -1,
+      p: [pr.p[0] + u2x * r0, pr.p[1] + u2y * r0, pr.p[2] + u2z * r0],
+      v: [0, 0, 0], trail: []
+    };
+    parts.push(eNew);
+    const at = accelerate();
+    const ie0 = parts.indexOf(e0);
+    const fIn = -(at[ie0][0] * ux + at[ie0][1] * uy + at[ie0][2] * uz);
+    const v2 = Math.sqrt(Math.max(0.01, fIn * r0));
+    e0.v[0] = pr.v[0] + tx * v2; e0.v[1] = pr.v[1] + ty * v2; e0.v[2] = pr.v[2] + tz * v2;
+    eNew.v[0] = pr.v[0] + t2x * v2; eNew.v[1] = pr.v[1] + t2y * v2; eNew.v[2] = pr.v[2] + t2z * v2;
+    return;
+  }
+  const d = randDir();
+  const r = 0.8 + Math.random() * 1.4;
+  parts.push({
+    kind: 'e', atom: -1, m: M_E, q: -1,
+    p: [d[0] * r, d[1] * r * 0.4, d[2] * r],
+    v: [(Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2],
+    trail: []
+  });
+}
+function removeElectron() {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].kind === 'e' && parts[i].atom === -1) { parts.splice(i, 1); return; }
+  }
+}function makeG() {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;right:12px;bottom:80px;color:#9fb0c2;font-family:"Courier New",monospace;font-size:11px;background:rgba(8,14,24,.55);border:1px solid rgba(120,170,220,.2);border-radius:8px;padding:8px 10px;';
+  el.innerHTML = '<div>log10 G <input id="gSl" type="range" min="-45" max="6" step="0.1" value="-42.6" style="width:140px"></div><div id="gVal"></div>';
+  document.body.appendChild(el);
+  const sl = el.querySelector('#gSl'), val = el.querySelector('#gVal');
+  const upd = () => {
+    const lv = sl && sl.value !== undefined && sl.value !== '' ? Number(sl.value) : NaN;
+    if (!Number.isFinite(lv)) return;
+    P.G = Math.pow(10, lv);
+    P.vOrb = Math.sqrt((P.K + P.G * M_P) / P.r0);
+    const ratio = P.G * M_P * M_P / P.K;
+    val.textContent = 'G=' + P.G.toExponential(2) + '  F_G/F_C=' + ratio.toExponential(2);
+  };
+  sl.addEventListener('input', upd);
+  upd();
+}
+function molecule() {
+  const mk = (x, y, atom, kind) => ({ kind, atom, m: kind === 'p' ? M_P : M_E, q: kind === 'p' ? 1 : -1, p: [x, y, 0], v: [0, 0, 0], trail: [] });
+  const save = parts;
+  function fxAt(R) {
+    parts = [mk(-R/2, 0, 0, 'p'), mk(R/2, 0, 1, 'p'), mk(-R/2, P.r0, 0, 'e'), mk(R/2, -P.r0, 1, 'e')];
+    const a = accelerate();
+    const f = M_P * a[0][0] + M_E * a[2][0];
+    return f;
+  }
+  let bestR = 2 * P.Rf, prevF = null;
+  for (let R = 1.2; R <= 4.0; R += 0.02) {
+    const f = fxAt(R);
+    if (prevF !== null && prevF < 0 && f >= 0) { bestR = R; break; }
+    prevF = f;
+  }
+  const vO = P.vOrb;
+  parts = [
+    mk(-bestR/2, 0, 0, 'p'),
+    mk(bestR/2, 0, 1, 'p'),
+    { ...mk(-bestR/2, P.r0, 0, 'e'), v: [-vO, 0, 0] },
+    { ...mk(bestR/2, -P.r0, 1, 'e'), v: [vO, 0, 0] },
+  ];
+  time = 0;
+  return bestR;
+}
+function makeBar() {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;font-family:"Courier New",monospace;';
+  bar.innerHTML = '<button id="addA">+ атом</button><button id="delA">− атом</button><button id="addE">+ e⁻</button><button id="delE">− e⁻</button><button id="mol">молекула</button>';
+  for (const b of bar.querySelectorAll('button')) {
+    b.style.cssText = 'background:rgba(18,28,44,.8);color:#9fb7d4;border:1px solid rgba(120,170,220,.35);padding:6px 12px;font:inherit;font-size:13px;border-radius:6px;cursor:pointer;';
+  }
+  document.body.appendChild(bar);
+  bar.querySelector('#addA').onclick = addAtom;
+  bar.querySelector('#delA').onclick = removeAtom;
+  bar.querySelector('#addE').onclick = addElectron;
+  bar.querySelector('#delE').onclick = removeElectron;
+  bar.querySelector('#mol').onclick = molecule;
+}
+function accelerate() {
+  const a = parts.map(() => [0, 0, 0]);
+
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      const A = parts[i], B = parts[j];
+      const dx = B.p[0] - A.p[0], dy = B.p[1] - A.p[1], dz = B.p[2] - A.p[2];
+      const r2 = dx * dx + dy * dy + dz * dz + 0.02 * 0.02;
+      const r = Math.sqrt(r2);
+      const sameAtom = A.atom >= 0 && A.atom === B.atom;
+      const S = sameAtom ? 1 : 1 / (1 + Math.exp((Math.sqrt(r2) - 2 * P.r0) / 0.15));
+      const f = -(P.K * A.q * B.q) * S / r2;
+      a[i][0] += (f / A.m) * dx / r; a[i][1] += (f / A.m) * dy / r; a[i][2] += (f / A.m) * dz / r;
+      a[j][0] -= (f / B.m) * dx / r; a[j][1] -= (f / B.m) * dy / r; a[j][2] -= (f / B.m) * dz / r;
+    }
+  }
+
+  for (let i = 0; i < parts.length; i++) {
+    const e = parts[i];
+    if (e.kind !== 'e') continue;
+    const p = parts.find((q) => q.kind === 'p' && q.atom === e.atom);
+    if (!p) continue;
+    const dx = e.p[0] - p.p[0], dy = e.p[1] - p.p[1], dz = e.p[2] - p.p[2];
+    const r = Math.hypot(dx, dy, dz) || 1e-6;
+    if (r > 2.2) { e.atom = -1; continue; }
+    const ux = dx / r, uy = dy / r, uz = dz / r;
+    const vr = e.v[0] * ux + e.v[1] * uy + e.v[2] * uz;
+    const f = -(P.Ks * (r - P.r0) + P.Cs * vr);
+    a[i][0] += (f / e.m) * ux; a[i][1] += (f / e.m) * uy; a[i][2] += (f / e.m) * uz;
+  }
+
+  const protons = parts.filter((q) => q.kind === 'p');
+  for (const e of parts) {
+    if (e.kind !== 'e' || e.atom !== -1) continue;
+    for (const pr of parts) {
+      if (pr.kind !== 'p') continue;
+      const cdx = e.p[0] - pr.p[0], cdy = e.p[1] - pr.p[1], cdz = e.p[2] - pr.p[2];
+      const cr = Math.hypot(cdx, cdy, cdz) || 1e-6;
+      if (cr > 1.4) continue;
+      const vx = e.v[0] - pr.v[0], vy = e.v[1] - pr.v[1], vz = e.v[2] - pr.v[2];
+      const Erel = 0.5 * M_E * (vx * vx + vy * vy + vz * vz) - P.K / cr;
+      if (Erel < 0) { e.atom = pr.atom; break; }
+    }
+  }
+  const mAtom = M_P + M_E;
+  for (let i = 0; i < protons.length; i++) {
+    for (let j = i + 1; j < protons.length; j++) {
+      const A = protons[i], B = protons[j];
+      const ia = parts.indexOf(A), ib = parts.indexOf(B);
+      const dx = B.p[0] - A.p[0], dy = B.p[1] - A.p[1], dz = B.p[2] - A.p[2];
+      const R = Math.hypot(dx, dy, dz) || 1e-6;
+      const ux = dx / R, uy = dy / R, uz = dz / R;
+      const dOv = 2 * P.Rf - R;
+      if (dOv > 0) {
+        const f = P.kField * dOv;
+        a[ia][0] -= (f / A.m) * ux; a[ia][1] -= (f / A.m) * uy; a[ia][2] -= (f / A.m) * uz;
+        a[ib][0] += (f / B.m) * ux; a[ib][1] += (f / B.m) * uy; a[ib][2] += (f / B.m) * uz;
+      }
+      const vx = B.v[0] - A.v[0], vy = B.v[1] - A.v[1], vz = B.v[2] - A.v[2];
+      const dotrv = dx * vx + dy * vy + dz * vz;
+      const Lx = dy * vz - dz * vy, Ly = dz * vx - dx * vz, Lz = dx * vy - dy * vx;
+      if (Math.hypot(Lx, Ly, Lz) < 1e-3 && dotrv < 0 && R < 4) {
+        let ex = 1, ey = 0, ez = 0;
+        if (Math.abs(dx) > 0.9 * R) { ex = 0; ey = 1; }
+        let tx = dy * ez - dz * ey, ty = dz * ex - dx * ez, tz = dx * ey - dy * ex;
+        const tm = Math.hypot(tx, ty, tz) || 1;
+        const kick = 2e-4;
+        a[ia][0] += (tx / tm) * kick; a[ia][1] += (ty / tm) * kick; a[ia][2] += (tz / tm) * kick;
+        a[ib][0] -= (tx / tm) * kick; a[ib][1] -= (ty / tm) * kick; a[ib][2] -= (tz / tm) * kick;
+      }
+      const vr = dotrv / R;
+      const fres = -P.cRes * vr / (R * R);
+      a[ia][0] -= (fres / A.m) * ux; a[ia][1] -= (fres / A.m) * uy; a[ia][2] -= (fres / A.m) * uz;
+      a[ib][0] += (fres / B.m) * ux; a[ib][1] += (fres / B.m) * uy; a[ib][2] += (fres / B.m) * uz;
+      let tvx = vx - vr * ux, tvy = vy - vr * uy, tvz = vz - vr * uz;
+      let tm2 = Math.hypot(tvx, tvy, tvz);
+      if (tm2 < 1e-6) {
+        let ex = 1, ey = 0, ez = 0;
+        if (Math.abs(ux) > 0.9) { ex = 0; ey = 1; }
+        tvx = uy * ez - uz * ey; tvy = uz * ex - ux * ez; tvz = ux * ey - uy * ex;
+        tm2 = Math.hypot(tvx, tvy, tvz) || 1;
+      }
+      tvx /= tm2; tvy /= tm2; tvz /= tm2;
+      const fdef = P.kDef * (vx * vx + vy * vy + vz * vz) / (R * R);
+      a[ia][0] += (fdef / A.m) * tvx; a[ia][1] += (fdef / A.m) * tvy; a[ia][2] += (fdef / A.m) * tvz;
+      a[ib][0] -= (fdef / B.m) * tvx; a[ib][1] -= (fdef / B.m) * tvy; a[ib][2] -= (fdef / B.m) * tvz;
+
+    }
+  }
+  const kQ = P.G;
+  for (let i = 0; i < parts.length; i++) {
+    const A = parts[i];
+    let Qx = 0, Qy = 0, Qz = 0;
+    for (let j = 0; j < parts.length; j++) {
+      if (j === i) continue;
+      const Bp = parts[j];
+      const rx = Bp.p[0]-A.p[0], ry = Bp.p[1]-A.p[1], rz = Bp.p[2]-A.p[2];
+      const r = Math.hypot(rx, ry, rz) || 1e-6;
+      const ux = rx / r, uy = ry / r, uz = rz / r;
+      let occ = 0;
+      for (let k = 0; k < parts.length; k++) {
+        if (k === i || k === j) continue;
+        const C = parts[k];
+        const kx = C.p[0]-A.p[0], ky = C.p[1]-A.p[1], kz = C.p[2]-A.p[2];
+        const proj = kx*ux + ky*uy + kz*uz;
+        if (proj <= 0 || proj >= r) continue;
+        const px = kx - proj*ux, py = ky - proj*uy, pz = kz - proj*uz;
+        const perp = Math.hypot(px, py, pz);
+        const rad = C.kind === 'p' ? P.Rs : P.RsE;
+        const shadow = rad * (1 - proj / r);
+        if (perp < shadow) occ = Math.max(occ, 1 - perp / Math.max(shadow, 1e-6));
+      }
+      const w = 1 - occ;
+      if (w <= 0) continue;
+      const f = kQ * (Bp.N ?? Bp.m) / (r * r) * w;
+      Qx += f * ux; Qy += f * uy; Qz += f * uz;
+    }
+    const Ni = A.N ?? A.m;
+    a[i][0] += (Ni / A.m) * Qx;
+    a[i][1] += (Ni / A.m) * Qy;
+    a[i][2] += (Ni / A.m) * Qz;
+  }  return a;
+}
+
+function step(dt) {
+  const a0 = accelerate();
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    p.v[0] += 0.5 * a0[i][0] * dt; p.v[1] += 0.5 * a0[i][1] * dt; p.v[2] += 0.5 * a0[i][2] * dt;
+    p.p[0] += p.v[0] * dt; p.p[1] += p.v[1] * dt; p.p[2] += p.v[2] * dt;
+  }
+  const a1 = accelerate();
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const d = p.kind === 'p' ? P.dampP : P.dampE;
+    p.v[0] += 0.5 * a1[i][0] * dt; p.v[1] += 0.5 * a1[i][1] * dt; p.v[2] += 0.5 * a1[i][2] * dt;
+    p.v[0] *= 1 - d * dt; p.v[1] *= 1 - d * dt; p.v[2] *= 1 - d * dt;
+    if (p.kind === 'e') {
+      p.trail.push([p.p[0], p.p[1], p.p[2]]);
+      if (p.trail.length > 375) p.trail.shift();
+    }
+  }
+  time += dt;
+}
+// ---------- 3D → экран ----------
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
+  canvas.width = Math.floor(innerWidth * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  W = innerWidth; H = innerHeight;
+}
+addEventListener('resize', resize);
+resize();
+
+function project(p) {
+  const cy = Math.cos(P.yaw), sy = Math.sin(P.yaw);
+  const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch);
+  const px = p[0] - P.tx, py = p[1] - P.ty, pz = p[2] - P.tz;
+  const x1 = px * cy - pz * sy;
+  const z1 = px * sy + pz * cy;
+  const y1 = py;
+  const y2 = y1 * cp - z1 * sp;
+  const z2 = y1 * sp + z1 * cp;
+  const zc = z2 + P.camR;
+  if (zc < 0.2) return null;
+  const s = P.focal / zc;
+  return [W / 2 + x1 * s, H / 2 - y2 * s, zc, s];
+}
+
+function glow(x, y, r, rgb, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`);
+  g.addColorStop(0.45, `rgba(${rgb},${a * 0.5})`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawRing(center, e) {
+  const p = parts.find((q) => q.kind === 'p' && q.atom === e.atom);
+  const d = [e.p[0] - p.p[0], e.p[1] - p.p[1], e.p[2] - p.p[2]];
+  const n = cross(d, e.v);
+  const u = norm(d);
+  const v = norm(cross(n, u));
+  ctx.strokeStyle = 'rgba(120,190,255,.16)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let k = 0; k <= 64; k++) {
+    const th = (k / 64) * Math.PI * 2;
+    const wp = [
+      p.p[0] + P.r0 * (u[0] * Math.cos(th) + v[0] * Math.sin(th)),
+      p.p[1] + P.r0 * (u[1] * Math.cos(th) + v[1] * Math.sin(th)),
+      p.p[2] + P.r0 * (u[2] * Math.cos(th) + v[2] * Math.sin(th)),
+    ];
+    const s = project(wp);
+    if (!s) continue;
+    if (k === 0) ctx.moveTo(s[0], s[1]); else ctx.lineTo(s[0], s[1]);
+  }
+  ctx.stroke();
+}
+
+function drawRepulsion() {
+  ctx.globalCompositeOperation = 'lighter';
+  const F0 = 0.06;
+  for (let idx = 0; idx < parts.length; idx++) {
+    const pt = parts[idx];
+    const s = project(pt.p);
+    if (!s) continue;
+    const K = pt.kind === 'p' ? 0.55 : 0.22;
+    const worldR = Math.sqrt(K / F0);
+    const screenR = worldR * s[3];
+    if (!(screenR > 4)) continue;
+    const g = ctx.createRadialGradient(s[0], s[1], 1, s[0], s[1], screenR);
+    const rgb = pt.atom === 0 ? '90,170,255' : '255,160,90';
+    const Fmax = K / (0.15 * 0.15 + 0.05);
+    for (let k = 0; k <= 20; k++) {
+      const kk = k / 20;
+      const r = kk * worldR;
+      const F = K / (r * r + 0.05);
+      const a = Math.min(0.5, 0.42 * F / Fmax);
+      g.addColorStop(kk, 'rgba(' + rgb + ',' + a.toFixed(4) + ')');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(s[0], s[1], screenR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (P.showField) drawRepulsion();
+
+  // следы электронов
+  for (const e of parts) {
+    if (e.kind !== 'e') continue;
+    for (let i = 1; i < e.trail.length; i++) {
+      const A = project(e.trail[i - 1]), B = project(e.trail[i]);
+      if (!A || !B) continue;
+      const t = i / e.trail.length;
+      ctx.strokeStyle = `rgba(80,220,255,${0.10 * t})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+    }
+  }
+
+  // оболочки
+
+
+  // линия между протонами
+  const s0 = project(parts[0].p), s1 = project(parts[1].p);
+  if (s0 && s1) {
+    ctx.strokeStyle = 'rgba(160,190,220,.25)';
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s1[0], s1[1]); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // частицы: сначала электроны, потом протоны
+  for (const e of parts) {
+    if (e.kind !== 'e') continue;
+    const s = project(e.p);
+    if (!s) continue;
+    glow(s[0], s[1], 16 * s[3] / 100, '80,230,255', 0.95);
+    ctx.fillStyle = '#eaffff';
+    ctx.beginPath(); ctx.arc(s[0], s[1], 2.2 * s[3] / 100, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const p of parts) {
+    if (p.kind !== 'p') continue;
+    const s = project(p.p);
+    if (!s) continue;
+    glow(s[0], s[1], 22 * s[3] / 100, '255,150,80', 0.9);
+    ctx.fillStyle = '#fff3e0';
+    ctx.beginPath(); ctx.arc(s[0], s[1], 3 * s[3] / 100, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // подписи
+  ctx.font = '12px "Courier New"';
+  ctx.fillStyle = '#9fb0c2';
+  if (s0) ctx.fillText('p⁺', s0[0] - 6, s0[1] - 22);
+  if (s1) ctx.fillText(parts[1].kind === 'p' ? 'p⁺' : 'e⁻', s1[0] - 6, s1[1] - 22);
+
+  return { s0, s1 };
+}
+
+// камера
+let dragging = false, lx = 0, ly = 0;
+canvas.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
+canvas.addEventListener('pointerup', () => { dragging = false; });
+canvas.addEventListener('pointercancel', () => { dragging = false; });
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  P.yaw += (e.clientX - lx) * 0.006;
+  P.pitch = Math.max(-1.4, Math.min(1.4, P.pitch + (e.clientY - ly) * 0.006));
+  lx = e.clientX; ly = e.clientY;
+});
+canvas.addEventListener('wheel', (e) => {
+  P.camR = Math.max(2.5, Math.min(20, P.camR * (1 + e.deltaY * 0.001)));
+  e.preventDefault();
+}, { passive: false });
+
+// цикл
+let last = performance.now();
+let simAcc = 0;
+let FIXED = 1 / 120;
+let fps = 0, fpsN = 0, fpsT = performance.now();
+
+function totalEnergy() {
+  let E = 0;
+  for (const p of parts) {
+    E += 0.5 * p.m * (p.v[0] * p.v[0] + p.v[1] * p.v[1] + p.v[2] * p.v[2]);
+  }
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      const A = parts[i], B = parts[j];
+      const dx = B.p[0] - A.p[0], dy = B.p[1] - A.p[1], dz = B.p[2] - A.p[2];
+      const r = Math.sqrt(dx * dx + dy * dy + dz * dz + 0.0004);
+      E += (P.K * A.q * B.q) / r * (A.atom >= 0 && A.atom === B.atom ? 1 : 1 / (1 + Math.exp((r - 2 * P.r0) / 0.15)));
+    }
+  }
+  for (const e of parts) {
+    if (e.kind !== 'e') continue;
+    const pr = parts.find((q) => q.kind === 'p' && q.atom === e.atom);
+    if (!pr) continue;
+    const dx = e.p[0] - pr.p[0], dy = e.p[1] - pr.p[1], dz = e.p[2] - pr.p[2];
+    const r = Math.hypot(dx, dy, dz);
+    E += 0.5 * P.Ks * (r - P.r0) * (r - P.r0);
+  }
+  const protons = parts.filter((q) => q.kind === 'p');
+  const mAtom = M_P + M_E;
+  for (let i = 0; i < protons.length; i++) {
+    for (let j = i + 1; j < protons.length; j++) {
+      const A = protons[i], B = protons[j];
+      const r = Math.hypot(B.p[0] - A.p[0], B.p[1] - A.p[1], B.p[2] - A.p[2]) || 1e-6;
+      const dOv = 2 * P.Rf - r;
+      if (dOv > 0) E += 0.5 * P.kField * dOv * dOv;
+
+    }
+  }
+  return E;
+}
+function frame() {
+  const now = performance.now();
+  const realDt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  if (!P.paused) {
+    FIXED = (1 / 120) / Math.sqrt(Math.max(1, P.G));
+    simAcc += realDt * P.timeScale;
+    let n = 0;
+    while (simAcc >= FIXED && n < 400) { step(FIXED); simAcc -= FIXED; n++; }
+    if (n === 400) simAcc = 0;
+  }
+
+  const cy2 = Math.cos(P.yaw), sy2 = Math.sin(P.yaw);
+  const fwd = (keys['w'] ? 1 : 0) - (keys['s'] ? 1 : 0);
+  const rgt = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
+  const up2 = (keys['e'] ? 1 : 0) - (keys['q'] ? 1 : 0);
+  if (fwd || rgt || up2) {
+    const sp2 = P.camSpeed * realDt;
+    P.ox += (fwd * -cy2 + rgt * -sy2) * sp2;
+    P.oz += (fwd * -sy2 + rgt * -cy2) * sp2;
+    P.oy += up2 * sp2;
+  }
+
+  let mx = 0, my = 0, mz = 0, mm = 0;
+  for (const p of parts) {
+    mx += p.m * p.p[0]; my += p.m * p.p[1]; mz += p.m * p.p[2]; mm += p.m;
+  }
+  const kf = 1 - Math.exp(-realDt * 3);
+  P.tx += (mx / mm + P.ox - P.tx) * kf;
+  P.ty += (my / mm + P.oy - P.ty) * kf;
+  P.tz += (mz / mm + P.oz - P.tz) * kf;
+
+  const info = draw();
+
+  fpsN++;
+  if (now - fpsT > 500) { fps = fpsN / ((now - fpsT) / 1000); fpsN = 0; fpsT = now; }
+
+  const protons = parts.filter((q) => q.kind === 'p');
+  const electrons = parts.filter((q) => q.kind === 'e');
+  const boundE = electrons.filter((q) => q.atom >= 0).length;
+  if (boundE >= 2 && !pairStart) pairStart = time;
+  if (boundE < 2 && pairStart) { pairLife = time - pairStart; pairStart = 0; }
+  let R = 0;
+  for (let i = 0; i < protons.length; i++) {
+    for (let j = i + 1; j < protons.length; j++) {
+      const d = Math.hypot(protons[j].p[0] - protons[i].p[0], protons[j].p[1] - protons[i].p[1], protons[j].p[2] - protons[i].p[2]);
+      if (!R || d < R) R = d;
+    }
+  }
+  const d0 = electrons[0] ? Math.hypot(electrons[0].p[0] - protons[0].p[0], electrons[0].p[1] - protons[0].p[1], electrons[0].p[2] - protons[0].p[2]) : 0;
+  const d1 = 0;
+  const fB = R > 0 ? (P.G * (M_P + M_E) ** 2) / (R * R) : 0;
+  const E = totalEnergy();
+  const E1 = -P.K / (2 * P.r0);
+  const Eb = E - protons.length * E1;
+  let orbR = 0, orbV = 0, orbT = 0, orbL = 0;
+  const e0 = electrons[0];
+  if (e0) {
+    const pr0 = protons.find((q) => q.atom === e0.atom) || protons[0];
+    if (pr0) {
+      const rx = e0.p[0] - pr0.p[0], ry = e0.p[1] - pr0.p[1], rz = e0.p[2] - pr0.p[2];
+      orbR = Math.hypot(rx, ry, rz);
+      const vx = e0.v[0] - pr0.v[0], vy = e0.v[1] - pr0.v[1], vz = e0.v[2] - pr0.v[2];
+      orbV = Math.hypot(vx, vy, vz);
+      orbT = orbV > 1e-9 ? (2 * Math.PI * orbR) / orbV : 0;
+      orbL = M_E * Math.hypot(ry * vz - rz * vy, rz * vx - rx * vz, rx * vy - ry * vx);
+    }
+  }  ui.textContent =
+`АТОМЫ H · 3D
+
+p⁺ + e⁻ на оболочке r0=${P.r0}
+e⁻ чувствует e–e, e–p (свой и чужой), p–p
+БГП: фон B=380 + экранирование Rs=1.0
+
+атомов: ${protons.length} · R = ${R ? R.toFixed(2) : '—'} a₀
+r(e₀–p₀) = ${d0 ? d0.toFixed(2) : '—'}
+БГП в E не входит (потенциала нет)
+E = ${E.toFixed(2)} · E/N = ${(E / protons.length).toFixed(2)}
+E_связи = ${Eb.toFixed(2)} · на атом = ${(Eb / protons.length).toFixed(2)}
+сложность: O(N²)
+орбита e₀: r=${orbR.toFixed(2)} · v=${orbV.toFixed(2)} · T=${orbT.toFixed(2)} · L=${orbL.toFixed(2)}
+пара: ${boundE >= 2 ? 'метастабильна ' + (time - pairStart).toFixed(1) + ' с' : pairLife ? 'распалась, τ=' + pairLife.toFixed(1) + ' с' : '—'}
+t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
+
+requestAnimationFrame(frame);
+}
+
+hint.textContent =
+`drag — вращение
+колесо — масштаб
+WASD — смещение
+Q/E — вверх/вниз
+камера следит за COM
+Space — пауза
+R — сброс`;
+
+warn.textContent =
+`3D. Электрон классический, оболочка — модельное связанное состояние;
+масштаб m_p=200, m_e=1. Форма и числа — модельные, не СИ.`;
+
+const keys = {};
+addEventListener('keydown', (e) => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.code === 'Space') { P.paused = !P.paused; e.preventDefault(); }
+  if (e.key.toLowerCase() === 'r') { parts = makeParts(); time = 0; }
+  if (e.key.toLowerCase() === 'g') P.showField = !P.showField;
+});
+addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+requestAnimationFrame(frame);
+
+makeBar();
+makeG();
+window.__h2d = {
+  P, parts,
+  get R() { return Math.hypot(parts[1].p[0] - parts[0].p[0], parts[1].p[1] - parts[0].p[1], parts[1].p[2] - parts[0].p[2]); },
+  get time() { return time; },
+};
+</script>
+</body>
+</html>
