@@ -100,6 +100,13 @@ const P = {
 };
 
 const M_P = 1836, M_E = 1, M_N = 1839;
+// Токовые массы кварков (Стандартная модель): u ≈ 2.16 МэВ, d ≈ 4.67 МэВ; mₑ = 0.511 МэВ.
+const M_U = 2.16 / 0.511, M_D = 4.67 / 0.511;
+// Остальные ~99% массы нуклона — энергия связи сильного взаимодействия; в модели это
+// отдельное тело «масса связи» в центре нуклона. Сумма даёт ровно M_P и M_N.
+const M_CORE_P = M_P - 2 * M_U - M_D;
+const M_CORE_N = M_N - M_U - 2 * M_D;
+const QUARKS = { p: ['u', 'u', 'd'], n: ['u', 'd', 'd'] };
 
 // Формула: W = Q·N, Q = k_a·C1/(4πR²), N = V·q = h·S·q, F = f(α)·n_f·W, n_f = k_v·h·S·q.
 // Для тяготения k_a = k_v = f(α) = 1, C1 = 4πG ⇒ F = G·m1·m2/R².
@@ -109,19 +116,20 @@ const Q = (r) => K_A * P.C1 / (4 * Math.PI * r * r);
 const kQ = () => K_A * P.C1 / (4 * Math.PI); // Q·r²
 
 // Частица — сфера радиуса rad: S = πr², h = V/S = 4r/3, V = hS, N = Vq.
+// Плотность q одна для всех (калибрована по N(e⁻) = 1), радиус — из N = V·q.
 const RAD_E = 0.01;
-const RAD_P = RAD_E * Math.cbrt(M_P / M_E);
-const RAD_N = RAD_P * Math.cbrt(M_N / M_P);
 const sphereV = (r) => (4 / 3) * Math.PI * r * r * r;
+const Q_DENS = M_E / sphereV(RAD_E);
+const radOf = (N) => Math.cbrt(N / (Q_DENS * (4 / 3) * Math.PI));
+const RAD_P = radOf(M_CORE_P);
+const RAD_N = radOf(M_CORE_N);
 P.radE = RAD_E;
 P.radP = RAD_P;
 P.radN = RAD_N;
-P.qE = M_E / sphereV(RAD_E); // плотности калиброваны: N(e⁻) = 1, N(p⁺) = 1836
-P.qP = M_P / sphereV(RAD_P);
-P.qN = P.qP;
-P.mP = sphereV(P.radP) * P.qP;
-P.mE = sphereV(P.radE) * P.qE;
-P.mN = sphereV(P.radN) * P.qN;
+P.qE = P.qP = P.qN = Q_DENS;
+P.mP = M_P;
+P.mE = M_E;
+P.mN = M_N;
 function bodyProps(rad, q) {
   const S = Math.PI * rad * rad;
   const h = 4 * rad / 3;
@@ -130,15 +138,32 @@ function bodyProps(rad, q) {
   return { rad, q, S, h, V, N };
 }
 const SPECIES = {
-  p: { rad: RAD_P, q: P.qP, color: '255,150,80', core: '#fff3e0', glow: 2, alpha: 0.45, label: 'p⁺' },
-  n: { rad: RAD_N, q: P.qN, color: '200,205,215', core: '#f2f4f8', glow: 2, alpha: 0.5, label: 'n⁰' },
-  e: { rad: RAD_E, q: P.qE, color: '80,230,255', core: '#eaffff', glow: 3, alpha: 0.9, label: 'e⁻' },
+  // p, n — масса связи нуклона; кварки u, d — отдельные тела внутри неё
+  p: { rad: RAD_P, q: Q_DENS, color: '255,150,80', core: '#fff3e0', glow: 2, alpha: 0.45, label: 'p⁺' },
+  n: { rad: RAD_N, q: Q_DENS, color: '200,205,215', core: '#f2f4f8', glow: 2, alpha: 0.5, label: 'n⁰' },
+  e: { rad: RAD_E, q: Q_DENS, color: '80,230,255', core: '#eaffff', glow: 3, alpha: 0.9, label: 'e⁻' },
+  u: { rad: radOf(M_U), q: Q_DENS, color: '255,90,120', core: '#ffd6de', glow: 3, alpha: 0.9, label: 'u' },
+  d: { rad: radOf(M_D), q: Q_DENS, color: '120,255,140', core: '#dcffe0', glow: 3, alpha: 0.9, label: 'd' },
 };
+let nextNuc = 0;
 function makeBody(kind, atom, pos, vel = [0, 0, 0]) {
   const sp = SPECIES[kind];
   const props = bodyProps(sp.rad, sp.q);
   // инерция = n_f = k_v·h·S·q (для тяготения заряд — масса)
   return { kind, atom, ...props, m: K_V * props.N, p: [...pos], v: [...vel], trail: [] };
+}
+// Нуклон = масса связи + три кварка на орбитах внутри неё; держит их только W = Q·N.
+function makeNucleon(kind, atom, pos) {
+  const nuc = nextNuc++;
+  const core = makeBody(kind, atom, pos);
+  core.nuc = nuc;
+  const body = [core];
+  for (const f of QUARKS[kind]) {
+    const q = orbit([makeBody(f, atom, pos)], [core], 0.6 * core.rad)[0];
+    q.nuc = nuc;
+    body.push(q);
+  }
+  return body;
 }
 
 // Q_j·N_j в точке на расстоянии r. Внутри шара радиуса R действует только
@@ -152,31 +177,41 @@ function phi(r, R) {
   return r >= R ? 1 / r : (3 * R * R - r * r) / (2 * R * R * R);
 }
 
-// Круговая орбита из той же формулы: относительное ускорение
-// a = Q(r)·(N_b·N_g/m_b + N_g·N_b/m_g) = v²/r. Импульс делится между телом и
-// группой, так что суммарный импульс не меняется.
-function orbit(body, group, r) {
-  let Ng = 0, mg = 0;
+// Центр масс, суммарные N и m набора тел.
+function lump(bodies) {
+  let N = 0, m = 0, R = 0;
   const c = [0, 0, 0], cv = [0, 0, 0];
-  for (const g of group) {
-    Ng += g.N; mg += g.m;
-    for (let k = 0; k < 3; k++) { c[k] += g.m * g.p[k]; cv[k] += g.m * g.v[k]; }
+  for (const b of bodies) {
+    N += b.N; m += b.m; R = Math.max(R, b.rad);
+    for (let k = 0; k < 3; k++) { c[k] += b.m * b.p[k]; cv[k] += b.m * b.v[k]; }
   }
-  for (let k = 0; k < 3; k++) { c[k] /= mg; cv[k] /= mg; }
+  for (let k = 0; k < 3; k++) { c[k] /= m; cv[k] /= m; }
+  return { N, m, R, c, cv };
+}
+// Круговая орбита составного тела `moving` вокруг группы `group` из той же формулы:
+// a = QN(r, R, 1)·(N_b·N_g/m_b + N_g·N_b/m_g) = v²/r, где QN учитывает и орбиту
+// внутри шара (N(r) = V(r)·q). Все тела `moving` сдвигаются одинаково, импульс
+// делится между ним и группой, так что суммарный импульс не меняется.
+function orbit(moving, group, r) {
+  const b = lump(moving), g = lump(group);
   const n = norm(randDir());
   const u = norm(cross(n, randDir()));
   const t = norm(cross(n, u));
-  const aRel = Q(r) * (body.N * Ng / body.m + Ng * body.N / mg);
+  const aRel = QN(r, Math.max(b.R, g.R), 1) * (b.N * g.N / b.m + g.N * b.N / g.m);
   const vRel = Math.sqrt(aRel * r);
-  const mt = mg + body.m;
-  for (let k = 0; k < 3; k++) {
-    body.p[k] = c[k] + u[k] * r;
-    body.v[k] = cv[k] + t[k] * vRel * mg / mt;
+  const mt = g.m + b.m;
+  // скорость общего центра масс до и после одна и та же
+  const V = [0, 1, 2].map((k) => (b.m * b.cv[k] + g.m * g.cv[k]) / mt);
+  const dp = [0, 1, 2].map((k) => g.c[k] + u[k] * r - b.c[k]);
+  const dvb = [0, 1, 2].map((k) => V[k] + t[k] * vRel * g.m / mt - b.cv[k]);
+  const dvg = [0, 1, 2].map((k) => V[k] - t[k] * vRel * b.m / mt - g.cv[k]);
+  for (const x of moving) {
+    for (let k = 0; k < 3; k++) { x.p[k] += dp[k]; x.v[k] += dvb[k]; }
   }
-  for (const g of group) {
-    for (let k = 0; k < 3; k++) g.v[k] -= t[k] * vRel * body.m / mt;
+  for (const x of group) {
+    for (let k = 0; k < 3; k++) x.v[k] += dvg[k];
   }
-  return body;
+  return moving;
 }
 
 function randDir() {
@@ -194,11 +229,12 @@ function norm(a) {
 }
 
 // Атом дейтерия: p⁺ в покое, n⁰ на орбите rn вокруг p⁺, e⁻ на орбите r0 вокруг p⁺+n⁰.
+// p⁺ и n⁰ — составные: масса связи + кварки.
 function makeAtom(atom, base) {
-  const p = makeBody('p', atom, base);
-  const n = orbit(makeBody('n', atom, base), [p], P.rn);
-  const e = orbit(makeBody('e', atom, base), [p, n], P.r0);
-  return [p, n, e];
+  const p = makeNucleon('p', atom, base);
+  const n = orbit(makeNucleon('n', atom, base), p, P.rn);
+  const e = orbit([makeBody('e', atom, base)], [...p, ...n], P.r0);
+  return [...p, ...n, ...e];
 }
 function makeParts() {
   return makeAtom(0, [0, 0, 0]);
@@ -210,11 +246,24 @@ let nextAtom = 1;
 // Состав системы. Тела с atom = −1 — свободные (без орбиты, в покое).
 let E0 = null; // E на момент последнего изменения состава или G — от него считается ΔE/E
 const changed = () => { E0 = null; };
+const isNucleon = (q) => q.kind === 'p' || q.kind === 'n';
+const isQuark = (q) => q.kind === 'u' || q.kind === 'd';
 const atomIds = () => [...new Set(parts.filter((q) => q.kind === 'p' && q.atom >= 0).map((q) => q.atom))];
 const isFree = (kind) => (q) => q.kind === kind && q.atom === -1;
 function removeLast(pred) {
   for (let i = parts.length - 1; i >= 0; i--) {
     if (pred(parts[i])) { parts.splice(i, 1); changed(); return; }
+  }
+}
+// Нуклон удаляется целиком: масса связи и все его кварки.
+function removeNucleon(pred) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (isNucleon(parts[i]) && pred(parts[i])) {
+      const nuc = parts[i].nuc;
+      parts = parts.filter((q) => q.nuc !== nuc);
+      changed();
+      return;
+    }
   }
 }
 function centerOfMass() {
@@ -247,23 +296,24 @@ function addNeutron() {
   const withN = new Set(parts.filter((q) => q.kind === 'n').map((q) => q.atom));
   const atom = ids.find((a) => !withN.has(a)) ?? ids[ids.length - 1];
   const nucleus = parts.filter((q) => q.kind !== 'e' && q.atom === atom);
-  const index = nucleus.length - 1;
+  const index = nucleus.filter((q) => q.kind === 'n').length;
   const host = nucleus[0];
-  parts.push(orbit(makeBody('n', atom, host.p), nucleus, P.rn * (1 + 0.35 * index)));
+  parts.push(...orbit(makeNucleon('n', atom, host.p), nucleus, P.rn * (1 + 0.35 * index)));
   changed();
 }
-const removeNeutron = () => removeLast((q) => q.kind === 'n');
+const removeNeutron = () => removeNucleon((q) => q.kind === 'n');
 function addProton() {
-  parts.push(makeBody('p', -1, nearCOM(1.5, 3)));
+  parts.push(...makeNucleon('p', -1, nearCOM(1.5, 3)));
   changed();
 }
-const removeProton = () => removeLast(isFree('p'));
+const removeProton = () => removeNucleon(isFree('p'));
 function addElectron() {
   parts.push(makeBody('e', -1, nearCOM(0.8, 2.2)));
   changed();
 }
 const removeElectron = () => removeLast(isFree('e'));
 function reset() {
+  nextNuc = 0;
   parts = makeParts(); time = 0; nextAtom = 1;
   changed();
 }
@@ -282,8 +332,8 @@ const OPS = {
   a: [removeAtom, addAtom],
 };
 const ROW_TIPS = {
-  p: '+ свободный протон в покое рядом с центром масс\n− убирает последний свободный протон',
-  n: '+ нейтрон на орбиту вокруг ядра атома\n− убирает последний нейтрон',
+  p: '+ свободный протон (u u d) в покое рядом с центром масс\n− убирает последний свободный протон вместе с кварками',
+  n: '+ нейтрон (u d d) на орбиту вокруг ядра атома\n− убирает последний нейтрон вместе с кварками',
   e: '+ свободный электрон в покое рядом с центром масс\n− убирает последний свободный электрон',
   a: '+ атом дейтерия p⁺ + n⁰ + e⁻\n− убирает последний атом целиком',
 };
@@ -481,7 +531,8 @@ function draw() {
   }
 
   // частицы: экранный радиус = rad * s — в масштабе объёма
-  for (const kind of ['p', 'n', 'e']) {
+  // кварки рисуются после масс связи — поверх, чтобы их было видно внутри нуклона
+  for (const kind of ['p', 'n', 'e', 'u', 'd']) {
     const sp = SPECIES[kind];
     for (const pt of parts) {
       if (pt.kind !== kind) continue;
@@ -500,6 +551,17 @@ function draw() {
   for (const pt of parts) {
     const s = project(pt.p);
     if (!s) continue;
+    if (isQuark(pt)) {
+      // u/d подписываются, только когда нуклон крупно на экране
+      if (RAD_P * s[3] < 25) continue;
+      // подпись лежит на светлом диске нуклона — тёмным цветом
+      ctx.font = 'bold 11px "Courier New"';
+      ctx.fillStyle = '#1b2533';
+      ctx.fillText(SPECIES[pt.kind].label, s[0] + 4, s[1] - 4);
+      ctx.font = '12px "Courier New"';
+      ctx.fillStyle = '#9fb0c2';
+      continue;
+    }
     const dy = Math.max(12, pt.rad * s[3] + 10);
     ctx.fillText(SPECIES[pt.kind].label, s[0] - 6, s[1] - dy);
   }
@@ -519,7 +581,7 @@ canvas.addEventListener('pointermove', (e) => {
   lx = e.clientX; ly = e.clientY;
 });
 canvas.addEventListener('wheel', (e) => {
-  P.camR = Math.max(2.5, Math.min(20, P.camR * (1 + e.deltaY * 0.001)));
+  P.camR = Math.max(0.8, Math.min(20, P.camR * (1 + e.deltaY * 0.001)));
   e.preventDefault();
 }, { passive: false });
 
@@ -585,7 +647,7 @@ function frame() {
   const protons = parts.filter((q) => q.kind === 'p');
   const neutrons = parts.filter((q) => q.kind === 'n');
   const electrons = parts.filter((q) => q.kind === 'e');
-  const p0 = protons[0], n0 = neutrons[0], e0 = electrons[0];
+  const p0 = protons[0], n0 = neutrons[0];
   let R = 0;
   for (let i = 0; i < protons.length; i++) {
     for (let j = i + 1; j < protons.length; j++) {
@@ -599,9 +661,13 @@ function frame() {
   const vn = (p0 && n0)
     ? Math.hypot(n0.v[0] - p0.v[0], n0.v[1] - p0.v[1], n0.v[2] - p0.v[2])
     : 0;
-  const nLine = n0
-    ? `n⁰: q=${P.qN.toExponential(2)} · V=${n0.V.toExponential(2)} → N=${n0.N.toFixed(1)} (m=${n0.m.toFixed(1)})`
-    : 'n⁰: —';
+  const quarks = parts.filter(isQuark);
+  const nucLine = (label, kind, core, total) => {
+    const f = QUARKS[kind];
+    const nu = f.filter((x) => x === 'u').length, nd = f.length - nu;
+    const mul = (k, M) => (k > 1 ? `${k}·` : '') + M.toFixed(2);
+    return `${label} = ${f.join(' ')}: N = ${core.toFixed(1)} (связь) + ${mul(nu, M_U)} (u) + ${mul(nd, M_D)} (d) = ${total}`;
+  };
   const rnLine = n0 ? `\nR(p–n) = ${Rn.toFixed(2)} a₀ · v=${vn.toExponential(2)}` : '';
   const en = totalEnergy();
   if (E0 === null) E0 = en.E;
@@ -614,6 +680,7 @@ function frame() {
   sum.textContent =
 `W = Q·N · 3D${P.paused ? ' · пауза' : ''}
 p⁺ ${counts.p} · n⁰ ${counts.n} · e⁻ ${counts.e} · A ${counts.p + counts.n} · Z ${counts.p}
+кварки: u ${quarks.filter((q) => q.kind === 'u').length} · d ${quarks.filter((q) => q.kind === 'd').length} · тел ${parts.length}
 E = ${en.E.toExponential(4)} · ΔE/E = ${dE.toExponential(1)}
 t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
   if (more.open) det.textContent =
@@ -621,9 +688,11 @@ t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
 Q = k_a·C1/(4πR²) — качество; N = V·q = h·S·q — количество (заряд)
 W = Σ Q_j·N_j; F = f(α)·n_f·W, n_f = k_v·N; a = F/m
 k_a = k_v = f(α) = 1 · C1 = 4πG = ${P.C1.toExponential(2)}
-p⁺: q=${P.qP.toExponential(2)} · V=${p0 ? p0.V.toExponential(2) : '—'} → N=${p0 ? p0.N.toFixed(1) : '—'} (m=${p0 ? p0.m.toFixed(1) : '—'})
-${nLine}
-e⁻: q=${P.qE.toExponential(2)} · V=${e0 ? e0.V.toExponential(2) : '—'} → N=${e0 ? e0.N.toFixed(1) : '—'} (m=${e0 ? e0.m.toFixed(1) : '—'})
+q = ${Q_DENS.toExponential(2)} у всех тел; N = V·q
+${nucLine('p⁺', 'p', M_CORE_P, M_P)}
+${nucLine('n⁰', 'n', M_CORE_N, M_N)}
+e⁻ — элементарен: N = ${M_E}
+кварки держит только W = Q·N массы связи (сильного взаимодействия нет)
 R(p–p, min) = ${R ? R.toFixed(2) : '—'} a₀${rnLine}
 |p| = ${en.Pm.toExponential(1)} · сложность O(N²)
 без кулона, кора, БГП и тени`;
@@ -653,19 +722,23 @@ Space — пауза · R — сброс · G — поле
 Начальные скорости — круговые орбиты из той же формулы (a = Q·N = v²/r).
 Свободные p⁺ и e⁻ появляются в покое; дальше их ведёт только W.
 Нейтрон держится только гравитацией; сильного взаимодействия нет.
+p⁺ = u u d, n⁰ = u d d: кварки (~1% массы) обращаются внутри
+«массы связи» (~99%), их держит только W = Q·N. e⁻ элементарен.
+Приблизьте колесом при «демо» — u/d видно внутри нуклонов.
 При честном G движение невидимо — включите «демо» и нажмите сброс.
 Масштаб m_p=1836, m_n=1839, m_e=1. Числа модельные, не СИ.`;
 requestAnimationFrame(frame);
 
 window.__h2d = {
-  P, Q, QN, makeBody, accelerate, step, totalEnergy, dynTime, reset,
+  P, Q, QN, makeBody, makeNucleon, accelerate, step, totalEnergy, dynTime, reset,
+  M: { M_P, M_N, M_U, M_D, M_CORE_P, M_CORE_N, RAD_P, RAD_N },
   get parts() { return parts; },
   set parts(v) { parts = v; },
   get R() {
     const ps = parts.filter((q) => q.kind === 'p');
     return ps.length > 1 ? Math.hypot(ps[1].p[0] - ps[0].p[0], ps[1].p[1] - ps[0].p[1], ps[1].p[2] - ps[0].p[2]) : 0;
   },
-  get A() { return parts.filter((q) => q.kind !== 'e').length; },
+  get A() { return parts.filter(isNucleon).length; },
   get Z() { return parts.filter((q) => q.kind === 'p').length; },
   get time() { return time; },
 };
