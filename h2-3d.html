@@ -16,52 +16,78 @@
       --btn-hover: rgba(30, 46, 70, .95);
       --accent: #5ab0ff;
       --mono: "Courier New", monospace;
+      --fs: 13px;       /* единый размер шрифта интерфейса */
+      --panel-w: 320px; /* ширина правой панели */
     }
     html, body { height: 100%; }
-    body { margin: 0; background: var(--bg); overflow: hidden; font-family: var(--mono); }
+    body { margin: 0; background: var(--bg); overflow: hidden; font-family: var(--mono); font-size: var(--fs); }
     canvas { display: block; width: 100vw; height: 100vh; }
     #ui {
-      position: absolute; top: 12px; left: 12px; max-width: calc(100vw - 290px);
-      color: var(--text); text-shadow: 1px 1px 3px #000; line-height: 1.42;
-      user-select: none; pointer-events: none; font-size: 12px;
+      position: absolute; top: 12px; left: 12px; max-width: calc(100vw - var(--panel-w) - 48px);
+      color: var(--text); text-shadow: 1px 1px 3px #000; line-height: 1.45;
+      user-select: none; pointer-events: none; font-size: var(--fs);
     }
     #ui pre { margin: 0; font: inherit; white-space: pre-wrap; }
     #ui details { pointer-events: auto; margin-top: 6px; color: var(--muted); }
     #ui summary { cursor: pointer; width: max-content; }
     #panel {
-      position: absolute; top: 12px; right: 12px; width: 236px; box-sizing: border-box;
-      max-height: calc(100vh - 24px); overflow-y: auto;
+      position: absolute; top: 12px; right: 12px; width: var(--panel-w); box-sizing: border-box;
+      max-height: calc(100vh - 24px); overflow-y: auto; overflow-x: hidden;
       background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-      padding: 10px 12px; color: var(--text); font-size: 12px;
+      padding: 10px 12px; color: var(--text); font-size: var(--fs); line-height: 1.4;
     }
     #panel h2 {
-      margin: 12px 0 6px; font-size: 11px; font-weight: normal; letter-spacing: .08em;
+      margin: 14px 0 6px; font-size: var(--fs); font-weight: normal; letter-spacing: .06em;
       text-transform: uppercase; color: var(--muted);
     }
     #panel h2:first-child { margin-top: 0; }
     #panel .row { display: grid; grid-template-columns: 1fr 32px 64px 32px; align-items: center; gap: 4px; margin: 4px 0; }
-    #panel .lbl { font-size: 14px; }
-    #panel .cnt { text-align: center; font-size: 14px; }
-    #panel .cnt small { font-size: 10px; color: var(--muted); }
+    #panel .row[hidden] { display: none; }
+    #panel .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #panel .sym { color: var(--muted); }
+    #panel .cnt { text-align: center; white-space: nowrap; }
+    #panel .cnt small { font-size: var(--fs); color: var(--muted); }
     #panel button {
       background: var(--btn); color: var(--text); border: 1px solid var(--line);
-      border-radius: 6px; padding: 5px 6px; font: inherit; cursor: pointer; min-height: 28px;
+      border-radius: 6px; padding: 5px 6px; font: inherit; font-size: var(--fs); cursor: pointer; min-height: 30px;
     }
     #panel button:hover:not(:disabled) { background: var(--btn-hover); }
     #panel button:disabled { opacity: .35; cursor: default; }
     #panel button.on { border-color: var(--accent); color: var(--accent); }
-    #panel .row button { font-size: 16px; padding: 0; }
+    #panel .row button { padding: 0; }
     #panel .seg { display: flex; gap: 4px; }
-    #panel .seg button { flex: 1; white-space: nowrap; font-size: 11px; padding: 5px 2px; }
-    #gVal { white-space: pre; }
-    #panel input[type=range] { width: 100%; accent-color: var(--accent); }
-    #panel .note { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+    #panel .seg + .seg { margin-top: 4px; }
+    #panel .seg button { flex: 1; white-space: nowrap; padding: 5px 2px; }
+    #gVal, #chVal { white-space: pre; }
+    #chBox label { display: block; margin-top: 6px; }
+    #chBox[hidden] { display: none; }
+    #panel input[type=range] { width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+    #panel .note { color: var(--muted); margin: 2px 0 6px; }
     #panel details { margin-top: 12px; color: var(--muted); }
     #panel summary { cursor: pointer; }
-    #panel pre { margin: 6px 0 0; font: inherit; font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+    #panel pre { margin: 6px 0 0; font: inherit; line-height: 1.45; white-space: pre-wrap; }
+    #info {
+      position: absolute; left: 12px; right: calc(var(--panel-w) + 24px); bottom: 12px; box-sizing: border-box;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 12px; color: var(--text); font-size: var(--fs);
+    }
+    #info summary { cursor: pointer; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+    #cards { display: flex; gap: 8px; overflow-x: auto; margin-top: 8px; padding-bottom: 4px; }
+    .card {
+      flex: 0 0 260px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+      background: rgba(18, 28, 44, .6); line-height: 1.45;
+    }
+    .card.absent { opacity: .55; }
+    .card h3 { margin: 0 0 4px; font-size: var(--fs); font-weight: bold; display: flex; align-items: center; gap: 6px; }
+    .card h3 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .card h3 .sym { color: var(--muted); font-weight: normal; }
+    .card h3 .n { margin-left: auto; color: var(--muted); font-weight: normal; white-space: nowrap; }
+    .card p { margin: 0; color: var(--muted); }
     @media (max-width: 640px) {
+      #info { right: 12px; bottom: calc(45vh + 8px); max-height: 30vh; overflow-y: auto; }
       #panel { top: auto; bottom: 0; right: 0; left: 0; width: auto; max-height: 45vh; border-radius: 10px 10px 0 0; }
-      #ui { max-width: calc(100vw - 24px); font-size: 11px; }
+      #ui { max-width: calc(100vw - 24px); }
+      .card { flex-basis: 240px; }
     }
   </style>
 </head>
@@ -71,6 +97,7 @@
     <details id="more"><summary>формула и N = V·q</summary><pre id="det"></pre></details>
   </div>
   <div id="panel"></div>
+  <div id="info"><details id="infoBox" open><summary>Описание частиц</summary><div id="cards"></div></details></div>
   <canvas id="c"></canvas>
 
 <script type="module">
@@ -88,6 +115,7 @@ const P = {
   G: 2.4e-43,
   r0: 1.0,
   rn: 0.45,
+  scene: 'atoms', // 'atoms' — старт с атомом; 'sandbox' — пусто, частицы по одной
   focal: 620,
   camR: 6.2,
   tx: 0, ty: 0, tz: 0, camSpeed: 4,
@@ -97,16 +125,15 @@ const P = {
   paused: false,
   timeScale: 1.0,
   showField: false,
+  showTrail: true,
 };
 
 const M_P = 1836, M_E = 1, M_N = 1839;
-// Токовые массы кварков (Стандартная модель): u ≈ 2.16 МэВ, d ≈ 4.67 МэВ; mₑ = 0.511 МэВ.
-const M_U = 2.16 / 0.511, M_D = 4.67 / 0.511;
-// Остальные ~99% массы нуклона — энергия связи сильного взаимодействия; в модели это
-// отдельное тело «масса связи» в центре нуклона. Сумма даёт ровно M_P и M_N.
-const M_CORE_P = M_P - 2 * M_U - M_D;
-const M_CORE_N = M_N - M_U - 2 * M_D;
-const QUARKS = { p: ['u', 'u', 'd'], n: ['u', 'd', 'd'] };
+// Точек в следе частицы (по одной на шаг интегрирования). Яркость падает линейно с
+// возрастом точки до нуля на TRAIL_LEN: вдвое больше — затухание вдвое медленнее.
+const TRAIL_LEN = 2 * 3 * 375;
+const TRAIL_SLACK = 250; // лишние точки срезаются пачкой, а не shift() на каждом шаге
+// В модели только частицы, доказанные напрямую и с измеренной массой: p⁺, n⁰, e⁻.
 
 // Формула: W = Q·N, Q = k_a·C1/(4πR²), N = V·q = h·S·q, F = f(α)·n_f·W, n_f = k_v·h·S·q.
 // Для тяготения k_a = k_v = f(α) = 1, C1 = 4πG ⇒ F = G·m1·m2/R².
@@ -121,8 +148,8 @@ const RAD_E = 0.01;
 const sphereV = (r) => (4 / 3) * Math.PI * r * r * r;
 const Q_DENS = M_E / sphereV(RAD_E);
 const radOf = (N) => Math.cbrt(N / (Q_DENS * (4 / 3) * Math.PI));
-const RAD_P = radOf(M_CORE_P);
-const RAD_N = radOf(M_CORE_N);
+const RAD_P = radOf(M_P);
+const RAD_N = radOf(M_N);
 P.radE = RAD_E;
 P.radP = RAD_P;
 P.radN = RAD_N;
@@ -138,32 +165,23 @@ function bodyProps(rad, q) {
   return { rad, q, S, h, V, N };
 }
 const SPECIES = {
-  // p, n — масса связи нуклона; кварки u, d — отдельные тела внутри неё
   p: { rad: RAD_P, q: Q_DENS, color: '255,150,80', core: '#fff3e0', glow: 2, alpha: 0.45, label: 'p⁺' },
   n: { rad: RAD_N, q: Q_DENS, color: '200,205,215', core: '#f2f4f8', glow: 2, alpha: 0.5, label: 'n⁰' },
   e: { rad: RAD_E, q: Q_DENS, color: '80,230,255', core: '#eaffff', glow: 3, alpha: 0.9, label: 'e⁻' },
-  u: { rad: radOf(M_U), q: Q_DENS, color: '255,90,120', core: '#ffd6de', glow: 3, alpha: 0.9, label: 'u' },
-  d: { rad: radOf(M_D), q: Q_DENS, color: '120,255,140', core: '#dcffe0', glow: 3, alpha: 0.9, label: 'd' },
 };
 let nextNuc = 0;
 function makeBody(kind, atom, pos, vel = [0, 0, 0]) {
-  const sp = SPECIES[kind];
-  const props = bodyProps(sp.rad, sp.q);
+  const props = bodyProps(SPECIES[kind].rad, SPECIES[kind].q);
   // инерция = n_f = k_v·h·S·q (для тяготения заряд — масса)
   return { kind, atom, ...props, m: K_V * props.N, p: [...pos], v: [...vel], trail: [] };
 }
-// Нуклон = масса связи + три кварка на орбитах внутри неё; держит их только W = Q·N.
+// Нуклон — одно тело с тегами nuc и nk ('p' | 'n'). Возвращается массивом, чтобы
+// работать с ним как с группой (orbit, удаление, центр масс).
 function makeNucleon(kind, atom, pos) {
-  const nuc = nextNuc++;
-  const core = makeBody(kind, atom, pos);
-  core.nuc = nuc;
-  const body = [core];
-  for (const f of QUARKS[kind]) {
-    const q = orbit([makeBody(f, atom, pos)], [core], 0.6 * core.rad)[0];
-    q.nuc = nuc;
-    body.push(q);
-  }
-  return body;
+  const body = makeBody(kind, atom, pos);
+  body.nuc = nextNuc++;
+  body.nk = kind;
+  return [body];
 }
 
 // Q_j·N_j в точке на расстоянии r. Внутри шара радиуса R действует только
@@ -229,15 +247,15 @@ function norm(a) {
 }
 
 // Атом дейтерия: p⁺ в покое, n⁰ на орбите rn вокруг p⁺, e⁻ на орбите r0 вокруг p⁺+n⁰.
-// p⁺ и n⁰ — составные: масса связи + кварки.
 function makeAtom(atom, base) {
   const p = makeNucleon('p', atom, base);
   const n = orbit(makeNucleon('n', atom, base), p, P.rn);
   const e = orbit([makeBody('e', atom, base)], [...p, ...n], P.r0);
   return [...p, ...n, ...e];
 }
+// Сцена: 'atoms' — старт с атомом дейтерия; 'sandbox' — пусто, частицы добавляются по одной.
 function makeParts() {
-  return makeAtom(0, [0, 0, 0]);
+  return P.scene === 'sandbox' ? [] : makeAtom(0, [0, 0, 0]);
 }
 let parts = makeParts();
 let time = 0;
@@ -246,25 +264,30 @@ let nextAtom = 1;
 // Состав системы. Тела с atom = −1 — свободные (без орбиты, в покое).
 let E0 = null; // E на момент последнего изменения состава или G — от него считается ΔE/E
 const changed = () => { E0 = null; };
-const isNucleon = (q) => q.kind === 'p' || q.kind === 'n';
-const isQuark = (q) => q.kind === 'u' || q.kind === 'd';
-const atomIds = () => [...new Set(parts.filter((q) => q.kind === 'p' && q.atom >= 0).map((q) => q.atom))];
+const atomIds = () => [...new Set(parts.filter((q) => q.nk === 'p' && q.atom >= 0).map((q) => q.atom))];
 const isFree = (kind) => (q) => q.kind === kind && q.atom === -1;
+// Нуклоны как группы тел (в порядке появления).
+function nucleons() {
+  const m = new Map();
+  for (const q of parts) {
+    if (q.nuc === undefined) continue;
+    let g = m.get(q.nuc);
+    if (!g) m.set(q.nuc, g = { nuc: q.nuc, nk: q.nk, atom: q.atom, bodies: [] });
+    g.bodies.push(q);
+  }
+  return [...m.values()];
+}
 function removeLast(pred) {
   for (let i = parts.length - 1; i >= 0; i--) {
     if (pred(parts[i])) { parts.splice(i, 1); changed(); return; }
   }
 }
-// Нуклон удаляется целиком: масса связи и все его кварки.
+// Нуклон удаляется целиком — всеми своими телами.
 function removeNucleon(pred) {
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (isNucleon(parts[i]) && pred(parts[i])) {
-      const nuc = parts[i].nuc;
-      parts = parts.filter((q) => q.nuc !== nuc);
-      changed();
-      return;
-    }
-  }
+  const g = nucleons().reverse().find(pred);
+  if (!g) return;
+  parts = parts.filter((q) => q.nuc !== g.nuc);
+  changed();
 }
 function centerOfMass() {
   let mx = 0, my = 0, mz = 0, mm = 0;
@@ -274,7 +297,7 @@ function centerOfMass() {
 function nearCOM(rMin, rMax) {
   const c = centerOfMass(), d = randDir();
   const r = rMin + Math.random() * (rMax - rMin);
-  return [c[0] + d[0] * r, c[1] + d[1] * r * 0.4, c[2] + d[2] * r];
+  return insideChamber([c[0] + d[0] * r, c[1] + d[1] * r * 0.4, c[2] + d[2] * r]);
 }
 
 function addAtom() {
@@ -291,22 +314,27 @@ function removeAtom() {
   changed();
 }
 function addNeutron() {
+  if (P.scene === 'sandbox') {
+    parts.push(...makeNucleon('n', -1, nearCOM(1.5, 3)));
+    changed();
+    return;
+  }
   const ids = atomIds();
   if (!ids.length) return;
-  const withN = new Set(parts.filter((q) => q.kind === 'n').map((q) => q.atom));
+  const withN = new Set(parts.filter((q) => q.nk === 'n').map((q) => q.atom));
   const atom = ids.find((a) => !withN.has(a)) ?? ids[ids.length - 1];
-  const nucleus = parts.filter((q) => q.kind !== 'e' && q.atom === atom);
-  const index = nucleus.filter((q) => q.kind === 'n').length;
+  const nucleus = parts.filter((q) => q.nuc !== undefined && q.atom === atom);
+  const index = new Set(nucleus.filter((q) => q.nk === 'n').map((q) => q.nuc)).size;
   const host = nucleus[0];
   parts.push(...orbit(makeNucleon('n', atom, host.p), nucleus, P.rn * (1 + 0.35 * index)));
   changed();
 }
-const removeNeutron = () => removeNucleon((q) => q.kind === 'n');
+const removeNeutron = () => removeNucleon((g) => g.nk === 'n');
 function addProton() {
   parts.push(...makeNucleon('p', -1, nearCOM(1.5, 3)));
   changed();
 }
-const removeProton = () => removeNucleon(isFree('p'));
+const removeProton = () => removeNucleon((g) => g.nk === 'p' && g.atom === -1);
 function addElectron() {
   parts.push(makeBody('e', -1, nearCOM(0.8, 2.2)));
   changed();
@@ -315,12 +343,47 @@ const removeElectron = () => removeLast(isFree('e'));
 function reset() {
   nextNuc = 0;
   parts = makeParts(); time = 0; nextAtom = 1;
-  changed();
+  resetChamber();
 }
 function setG(G) {
   P.G = G;
   P.C1 = 4 * Math.PI * G;
   changed();
+}
+
+// ---------- камера ----------
+// Замкнутая упругая сфера вокруг сцены. Стенка — источник с зарядом N и f(α) = −1
+// (отталкивание): на тело на расстоянии d от стенки действует W = Q(d)·N, направленное
+// от стенки. У самой стенки (d < δ) — тот же внутренний закон, что у тел: N(d) = N·(d/δ)³.
+// Радиус R — отдельная степень свободы: инерция m = k_v·N, пружина к R₀ с жёсткостью
+// K = kQ·N·κ; давление тел растягивает стенку, пружина возвращает.
+const F_ALPHA_WALL = -1;
+const CH = {
+  on: false, c: [0, 0, 0], R0: 5, R: 5, V: 0, N: 1e3, kappa: 1e4, delta: 0.02, aR: 0,
+  hFrac: 0.2, // толщина вязкого слоя у стенки, доля R
+  visc: 10,   // вязкость слоя в единицах собственной частоты стенки
+  zeta: 1,    // затухание радиуса (1 — критическое, без колебаний)
+  lost: 0,    // энергия, ушедшая в вязкость и затухание
+};
+const wallM = () => K_V * CH.N;
+const wallK = () => kQ() * CH.N * CH.kappa;
+function resetChamber() {
+  CH.c = centerOfMass();
+  CH.R = CH.R0;
+  CH.V = 0;
+  changed();
+}
+function setChamber(on) {
+  CH.on = on;
+  resetChamber();
+}
+// Новое тело кладётся внутрь камеры, если она включена.
+function insideChamber(pos) {
+  if (!CH.on) return pos;
+  const r = [0, 1, 2].map((k) => pos[k] - CH.c[k]);
+  const rm = Math.hypot(...r), lim = 0.8 * CH.R;
+  if (rm <= lim) return pos;
+  return [0, 1, 2].map((k) => CH.c[k] + r[k] * lim / rm);
 }
 
 // ---------- панель ----------
@@ -331,26 +394,47 @@ const OPS = {
   e: [removeElectron, addElectron],
   a: [removeAtom, addAtom],
 };
+// какие строки видны в каждой сцене
+const ROWS = {
+  atoms: ['p', 'n', 'e', 'a'],
+  sandbox: ['p', 'n', 'e'],
+};
 const ROW_TIPS = {
-  p: '+ свободный протон (u u d) в покое рядом с центром масс\n− убирает последний свободный протон вместе с кварками',
-  n: '+ нейтрон (u d d) на орбиту вокруг ядра атома\n− убирает последний нейтрон вместе с кварками',
+  p: '+ свободный протон в покое рядом с центром масс\n− убирает последний свободный протон',
+  n: '+ нейтрон: в атомах — на орбиту вокруг ядра, в песочнице — в покое\n− убирает последний нейтрон',
   e: '+ свободный электрон в покое рядом с центром масс\n− убирает последний свободный электрон',
   a: '+ атом дейтерия p⁺ + n⁰ + e⁻\n− убирает последний атом целиком',
 };
 const panel = document.getElementById('panel');
 function makePanel() {
-  const row = (k, label) =>
-    `<div class="row" data-k="${k}" title="${ROW_TIPS[k]}"><span class="lbl">${label}</span>` +
+  const row = (k, label, sym) =>
+    `<div class="row" data-k="${k}" title="${ROW_TIPS[k]}"><span class="lbl">${label} <span class="sym">${sym}</span></span>` +
     `<button data-op="0" aria-label="убрать ${label}">−</button><span class="cnt"></span>` +
     `<button data-op="1" aria-label="добавить ${label}">+</button></div>`;
   panel.innerHTML =
-    `<h2>Частицы</h2>${row('p', 'p⁺')}${row('n', 'n⁰')}${row('e', 'e⁻')}${row('a', 'атом')}` +
+    `<h2>Режим</h2>` +
+    `<div class="seg">` +
+    `<button data-scene="atoms" title="старт с атомом дейтерия p⁺ + n⁰ + e⁻">атомы</button>` +
+    `<button data-scene="sandbox" title="старт с пустой сцены, частицы добавляются по одной">песочница</button>` +
+    `</div>` +
+    `<h2 id="partsHead">Частицы</h2>` +
+    `${row('p', 'протон', 'p⁺')}${row('n', 'нейтрон', 'n⁰')}${row('e', 'электрон', 'e⁻')}` +
+    `${row('a', 'атом', 'p⁺n⁰e⁻')}` +
     `<h2>Постоянная G</h2>` +
     `<input id="gSl" type="range" min="-45" max="6" step="0.01" aria-label="log10 G">` +
     `<div id="gVal" class="note"></div>` +
     `<div class="seg"><button data-g="${G_HONEST}">честный</button><button data-g="1e-5">демо</button><button data-g="1">1</button></div>` +
     `<h2>Симуляция</h2>` +
     `<div class="seg"><button id="bPause"></button><button id="bReset">⟳ сброс</button><button id="bField">поле</button></div>` +
+    `<div class="seg"><button id="bChamber" title="замкнутая упругая сфера: стенка с зарядом N и f(α) = −1 отталкивает тела по W = Q·N">замкнутая сфера</button><button id="bTrail" title="показать или скрыть следы частиц (клавиша T)">след</button></div>` +
+    `<div id="chBox">` +
+    `<label class="note">R₀ — радиус покоя <input id="chR0" type="range" min="0.3" max="10" step="0.1"></label>` +
+    `<label class="note">N стенки (log₁₀) <input id="chN" type="range" min="1" max="6" step="0.1"></label>` +
+    `<label class="note">упругость κ (log₁₀) <input id="chK" type="range" min="0" max="6" step="0.1"></label>` +
+    `<label class="note" title="слой у стенки, где тело тормозится; доля радиуса">вязкий слой h / R <input id="chH" type="range" min="0.02" max="0.5" step="0.01"></label>` +
+    `<label class="note" title="чем больше, тем сильнее торможение в слое">вязкость (log₁₀) <input id="chV" type="range" min="0" max="3" step="0.1"></label>` +
+    `<label class="note" title="1 — стенка возвращается к R₀ без колебаний; 0 — без затухания">затухание ζ <input id="chZ" type="range" min="0" max="2" step="0.05"></label>` +
+    `<div id="chVal" class="note"></div></div>` +
     `<details><summary>? подсказки</summary><pre id="help"></pre></details>`;
 
   panel.addEventListener('click', (e) => {
@@ -359,28 +443,101 @@ function makePanel() {
     b.blur(); // чтобы Space не нажимал кнопку повторно
     if (b.dataset.op) OPS[b.closest('.row').dataset.k][+b.dataset.op]();
     else if (b.dataset.g) setG(Number(b.dataset.g));
+    else if (b.dataset.scene) {
+      P.scene = b.dataset.scene;
+      P.camR = P.scene === 'sandbox' ? 2.5 : 6.2;
+      CH.R0 = P.scene === 'sandbox' ? 1.5 : 5;
+      P.ox = P.oy = P.oz = 0;
+      reset();
+    }
     else if (b.id === 'bPause') P.paused = !P.paused;
     else if (b.id === 'bReset') reset();
     else if (b.id === 'bField') P.showField = !P.showField;
+    else if (b.id === 'bChamber') setChamber(!CH.on);
+    else if (b.id === 'bTrail') P.showTrail = !P.showTrail;
   });
+  panel.querySelector('#chR0').addEventListener('input', (e) => { CH.R0 = Number(e.target.value); changed(); });
+  panel.querySelector('#chH').addEventListener('input', (e) => { CH.hFrac = Number(e.target.value); changed(); });
+  panel.querySelector('#chV').addEventListener('input', (e) => { CH.visc = Math.pow(10, Number(e.target.value)); changed(); });
+  panel.querySelector('#chZ').addEventListener('input', (e) => { CH.zeta = Number(e.target.value); changed(); });
+  panel.querySelector('#chN').addEventListener('input', (e) => { CH.N = Math.pow(10, Number(e.target.value)); changed(); });
+  panel.querySelector('#chK').addEventListener('input', (e) => { CH.kappa = Math.pow(10, Number(e.target.value)); changed(); });
   panel.querySelector('#gSl').addEventListener('input', (e) => setG(Math.pow(10, Number(e.target.value))));
+}
+// ---------- нижняя панель: описание частиц ----------
+// Только частицы, доказанные напрямую и с измеренной массой. Значения — из тех же констант.
+const MEV = 0.511; // mₑ в МэВ
+function particleInfo() {
+  return [
+    { k: 'p', name: 'Протон', sym: 'p⁺', lines: [
+      'открыт: Резерфорд, 1919',
+      `N = ${M_P} (${(M_P * MEV).toFixed(1)} МэВ), радиус ${RAD_P.toFixed(4)}`,
+      'эл. заряд +1 (только подпись, кулона нет)',
+      'в модели — однородный шар; в атоме — центр, держится только W'] },
+    { k: 'n', name: 'Нейтрон', sym: 'n⁰', lines: [
+      'открыт: Чедвик, 1932',
+      `N = ${M_N} (${(M_N * MEV).toFixed(1)} МэВ), радиус ${RAD_N.toFixed(4)}`,
+      'эл. заряд 0',
+      `на орбите rn = ${P.rn} вокруг протона; β-распада в модели нет`] },
+    { k: 'e', name: 'Электрон', sym: 'e⁻', lines: [
+      'открыт: Томсон, 1897; элементарен',
+      `N = ${M_E} (${MEV} МэВ), радиус ${RAD_E}`,
+      'эл. заряд −1 (только подпись)',
+      `на орбите r0 = ${P.r0} вокруг ядра; держит только W`] },
+  ];
+}
+function makeCards() {
+  document.getElementById('cards').innerHTML = particleInfo().map((c) =>
+    `<div class="card" data-k="${c.k}"><h3><span class="dot" style="background:rgb(${SPECIES[c.k].color})"></span>` +
+    `${c.name} <span class="sym">${c.sym}</span><span class="n"></span></h3>` +
+    c.lines.map((l) => `<p>${l}</p>`).join('') + `</div>`).join('');
+}
+function syncCards() {
+  if (!document.getElementById('infoBox').open) return;
+  const n = { p: 0, n: 0, e: 0 };
+  for (const q of parts) n[q.kind]++;
+  for (const card of document.querySelectorAll('#cards .card')) {
+    const k = card.dataset.k;
+    card.querySelector('.n').textContent = `в сцене ${n[k]}`;
+    card.classList.toggle('absent', n[k] === 0);
+  }
 }
 function syncPanel(c) {
   const free = { p: c.pFree, e: c.eFree };
   const total = { p: c.p, n: c.n, e: c.e, a: c.a };
   const canDel = { p: c.pFree > 0, n: c.n > 0, e: c.eFree > 0, a: c.a > 0 };
+  const visible = new Set(ROWS[P.scene]);
   for (const r of panel.querySelectorAll('.row')) {
     const k = r.dataset.k;
-    r.querySelector('.cnt').innerHTML = total[k] + (free[k] ? `<small> св ${free[k]}</small>` : '');
+    r.hidden = !visible.has(k);
+    const sv = free[k] && free[k] < total[k] ? `<small> св ${free[k]}</small>` : '';
+    r.querySelector('.cnt').innerHTML = total[k] + sv;
     r.querySelector('[data-op="0"]').disabled = !canDel[k];
   }
-  panel.querySelector('[data-k="n"] [data-op="1"]').disabled = c.a === 0;
+  panel.querySelector('[data-k="n"] [data-op="1"]').disabled = P.scene === 'atoms' && c.a === 0;
+  panel.querySelector('#partsHead').textContent = P.scene === 'sandbox' ? 'Частицы — по одной' : 'Частицы';
+  for (const b of panel.querySelectorAll('[data-scene]')) b.classList.toggle('on', b.dataset.scene === P.scene);
   const sl = panel.querySelector('#gSl');
   if (document.activeElement !== sl) sl.value = Math.log10(P.G).toFixed(2);
   panel.querySelector('#gVal').textContent = `G = ${P.G.toExponential(2)}\nC1 = 4πG = ${P.C1.toExponential(2)}`;
   for (const b of panel.querySelectorAll('[data-g]')) b.classList.toggle('on', Number(b.dataset.g) === P.G);
   panel.querySelector('#bPause').textContent = P.paused ? '▶ пуск' : '⏸ пауза';
   panel.querySelector('#bField').classList.toggle('on', P.showField);
+  panel.querySelector('#bChamber').classList.toggle('on', CH.on);
+  panel.querySelector('#bTrail').classList.toggle('on', P.showTrail);
+  panel.querySelector('#chBox').hidden = !CH.on;
+  if (CH.on) {
+    const setSl = (id, v) => { const el = panel.querySelector(id); if (document.activeElement !== el) el.value = v; };
+    setSl('#chR0', CH.R0);
+    setSl('#chN', Math.log10(CH.N).toFixed(1));
+    setSl('#chK', Math.log10(CH.kappa).toFixed(1));
+    setSl('#chH', CH.hFrac);
+    setSl('#chV', Math.log10(CH.visc).toFixed(1));
+    setSl('#chZ', CH.zeta);
+    panel.querySelector('#chVal').textContent =
+      `R = ${CH.R.toFixed(3)} (R₀ = ${CH.R0.toFixed(1)})\nN = ${CH.N.toExponential(1)} · κ = ${CH.kappa.toExponential(1)}\n` +
+      `h = ${(CH.hFrac * CH.R).toFixed(2)} · вязк. ${CH.visc.toFixed(0)} · ζ = ${CH.zeta.toFixed(2)}`;
+  }
 }
 // W_i = Σ_j Q_j·N_j (вектор к источнику), F_i = f(α)·n_f·W_i, n_f = k_v·N_i, a_i = F_i/m_i.
 function accelerate() {
@@ -402,7 +559,59 @@ function accelerate() {
     a[i][1] = F * Wy / A.m;
     a[i][2] = F * Wz / A.m;
   }
+  if (CH.on) accelerateWall(a);
   return a;
+}
+// Пружина стенки к R₀: ½K(R−R₀)². Колебания радиуса гасит затухание (dampWall).
+const springU = () => 0.5 * wallK() * (CH.R - CH.R0) ** 2;
+const springF = () => -wallK() * (CH.R - CH.R0);
+const wallOmega = () => Math.sqrt(wallK() / wallM()); // собственная частота стенки = √(kQ·κ)
+
+// Вязкий слой у стенки и затухание радиуса — не из формулы W = Q·N, а добавка модели.
+// В слое толщиной h = hFrac·R тело тормозится относительно стенки с темпом
+// γ = visc·ω·(1 − d/h)² — тем сильнее, чем ближе к стенке; сила торможения уходит в
+// стенку (импульс пары сохраняется). Радиус гасится с ζ: Ṙ ∝ e^(−2ζω·t).
+// Потерянная энергия копится в CH.lost, так что E + потери = const.
+function dampWall(dt) {
+  const M = wallM(), w = wallOmega(), h = CH.hFrac * CH.R;
+  for (const A of parts) {
+    const rx = A.p[0] - CH.c[0], ry = A.p[1] - CH.c[1], rz = A.p[2] - CH.c[2];
+    const rm = Math.hypot(rx, ry, rz);
+    const d = CH.R - rm;
+    if (rm === 0 || d <= 0 || d >= h) continue;
+    const nx = rx / rm, ny = ry / rm, nz = rz / rm;
+    const u = A.v[0] * nx + A.v[1] * ny + A.v[2] * nz - CH.V; // скорость к стенке относительно неё
+    const u2 = u * Math.exp(-CH.visc * w * (1 - d / h) ** 2 * dt);
+    const mt = A.m + M, du = u2 - u;
+    CH.lost += 0.5 * (A.m * M / mt) * (u * u - u2 * u2);
+    const dv = du * M / mt;
+    A.v[0] += dv * nx; A.v[1] += dv * ny; A.v[2] += dv * nz;
+    CH.V -= du * A.m / mt;
+  }
+  const V2 = CH.V * Math.exp(-2 * CH.zeta * w * dt);
+  CH.lost += 0.5 * M * (CH.V * CH.V - V2 * V2);
+  CH.V = V2;
+}
+
+// Стенка камеры: W = Q(d)·N к стенке, F = f(α)·n_f·W с f(α) = −1 — от стенки.
+// Стенка действует только изнутри (d > 0): вылетевшее тело её больше не толкает,
+// потенциал снаружи постоянный и непрерывно продолжает внутренний.
+// Реакция тел на стенку растягивает радиус; CH.aR — ускорение радиуса.
+function accelerateWall(a) {
+  let FR = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const A = parts[i];
+    const rx = A.p[0] - CH.c[0], ry = A.p[1] - CH.c[1], rz = A.p[2] - CH.c[2];
+    const rm = Math.hypot(rx, ry, rz);
+    const d = CH.R - rm;
+    if (rm === 0 || d <= 0) continue;
+    const F = F_ALPHA_WALL * K_V * A.N * QN(d, CH.delta, CH.N); // вдоль r̂: к стенке со знаком f(α)
+    a[i][0] += F * rx / rm / A.m;
+    a[i][1] += F * ry / rm / A.m;
+    a[i][2] += F * rz / rm / A.m;
+    FR -= F;
+  }
+  CH.aR = (FR + springF()) / wallM();
 }
 
 
@@ -417,24 +626,43 @@ function dynTime() {
       t = Math.min(t, Math.sqrt(r * r * r / (kQ() * (A.N + B.N))));
     }
   }
+  if (CH.on) {
+    // тело у стенки и колебание самой стенки
+    for (const A of parts) {
+      const d = Math.max(CH.delta, Math.abs(CH.R - Math.hypot(A.p[0] - CH.c[0], A.p[1] - CH.c[1], A.p[2] - CH.c[2])));
+      t = Math.min(t, Math.sqrt(d * d * d / (kQ() * CH.N)));
+    }
+    t = Math.min(t, Math.sqrt(wallM() / wallK()));
+  }
   return t;
 }
 
 function step(dt) {
   const a0 = accelerate();
+  if (CH.on) CH.V += 0.5 * CH.aR * dt;
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
     p.v[0] += 0.5 * a0[i][0] * dt; p.v[1] += 0.5 * a0[i][1] * dt; p.v[2] += 0.5 * a0[i][2] * dt;
+  }
+  if (CH.on) dampWall(0.5 * dt);
+  for (const p of parts) {
     p.p[0] += p.v[0] * dt; p.p[1] += p.v[1] * dt; p.p[2] += p.v[2] * dt;
   }
+  if (CH.on) {
+    CH.R += CH.V * dt;
+    // страховка: стенка с затуханием до нуля не доходит, но вырождаться ей нельзя
+    if (CH.R < 0.05 * CH.R0) { CH.R = 0.05 * CH.R0; CH.V = Math.max(0, CH.V); }
+  }
   const a1 = accelerate();
+  if (CH.on) CH.V += 0.5 * CH.aR * dt;
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
     p.v[0] += 0.5 * a1[i][0] * dt; p.v[1] += 0.5 * a1[i][1] * dt; p.v[2] += 0.5 * a1[i][2] * dt;
-    if (p.kind === 'e') {
-      p.trail.push([p.p[0], p.p[1], p.p[2]]);
-      if (p.trail.length > 375) p.trail.shift();
-    }
+  }
+  if (CH.on) dampWall(0.5 * dt);
+  for (const p of parts) {
+    p.trail.push([p.p[0], p.p[1], p.p[2]]);
+    if (p.trail.length > TRAIL_LEN + TRAIL_SLACK) p.trail.splice(0, TRAIL_SLACK);
   }
   time += dt;
 }
@@ -499,30 +727,67 @@ function drawField() {
   }
   ctx.globalCompositeOperation = 'source-over';
 }
+// Камера: силуэт сферы радиуса R (сплошной) и R₀ (пунктир); свечение у стенки.
+function drawChamber() {
+  const s = project(CH.c);
+  if (!s) return;
+  const rr = CH.R * s[3], r0 = CH.R0 * s[3];
+  if (!(rr > 1) || !(r0 > 0)) return; // вырожденная сфера — нечего рисовать
+  const g = ctx.createRadialGradient(s[0], s[1], rr * 0.85, s[0], s[1], rr);
+  g.addColorStop(0, 'rgba(150,120,255,0)');
+  g.addColorStop(1, 'rgba(150,120,255,0.22)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(s[0], s[1], rr, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(170,140,255,.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(s[0], s[1], rr, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(170,140,255,.25)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 6]);
+  ctx.beginPath(); ctx.arc(s[0], s[1], r0, 0, Math.PI * 2); ctx.stroke();
+  ctx.setLineDash([]);
+}
 function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (P.showField) drawField();
+  if (CH.on) drawChamber();
 
-  // следы электронов
-  for (const e of parts) {
-    if (e.kind !== 'e') continue;
-    for (let i = 1; i < e.trail.length; i++) {
-      const A = project(e.trail[i - 1]), B = project(e.trail[i]);
-      if (!A || !B) continue;
-      const t = i / e.trail.length;
-      ctx.strokeStyle = `rgba(80,220,255,${0.10 * t})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+  // следы всех частиц цветом своего вида (кнопка «след», клавиша T).
+  // Яркость 0.10·(1 − возраст/TRAIL_LEN); рисуется полосами по TRAIL_BANDS — одна
+  // обводка на полосу вместо одной на отрезок.
+  if (P.showTrail) {
+    const TRAIL_BANDS = 24;
+    ctx.lineWidth = 1.5;
+    for (const b of parts) {
+      const tr = b.trail, n = tr.length;
+      if (n < 2) continue;
+      const pts = tr.map(project);
+      const color = SPECIES[b.kind].color;
+      for (let band = 0; band < TRAIL_BANDS; band++) {
+        // возрастной диапазон полосы: от старых к новым
+        const ageHi = TRAIL_LEN * (1 - band / TRAIL_BANDS), ageLo = TRAIL_LEN * (1 - (band + 1) / TRAIL_BANDS);
+        const iLo = Math.max(1, Math.ceil(n - 1 - ageHi)), iHi = Math.min(n - 1, Math.floor(n - 1 - ageLo));
+        if (iLo > iHi) continue;
+        ctx.strokeStyle = `rgba(${color},${(0.10 * (band + 0.5) / TRAIL_BANDS).toFixed(4)})`;
+        ctx.beginPath();
+        for (let i = iLo; i <= iHi; i++) {
+          const A = pts[i - 1], B = pts[i];
+          if (!A || !B) continue;
+          ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]);
+        }
+        ctx.stroke();
+      }
     }
   }
 
-  // линия между протонами
-  const pps = parts.filter((p) => p.kind === 'p');
-  const s0 = pps[0] ? project(pps[0].p) : null;
-  const s1 = pps[1] ? project(pps[1].p) : null;
+  // линия между протонами (по центрам масс нуклонов)
+  const nucs = nucleons().map((g) => ({ ...g, ...lump(g.bodies) }));
+  const pps = nucs.filter((g) => g.nk === 'p');
+  const s0 = pps[0] ? project(pps[0].c) : null;
+  const s1 = pps[1] ? project(pps[1].c) : null;
   if (s0 && s1) {
     ctx.strokeStyle = 'rgba(160,190,220,.25)';
     ctx.setLineDash([4, 5]);
@@ -531,8 +796,7 @@ function draw() {
   }
 
   // частицы: экранный радиус = rad * s — в масштабе объёма
-  // кварки рисуются после масс связи — поверх, чтобы их было видно внутри нуклона
-  for (const kind of ['p', 'n', 'e', 'u', 'd']) {
+  for (const kind of ['p', 'n', 'e']) {
     const sp = SPECIES[kind];
     for (const pt of parts) {
       if (pt.kind !== kind) continue;
@@ -546,22 +810,11 @@ function draw() {
   }
 
   // подписи
-  ctx.font = '12px "Courier New"';
+  ctx.font = '13px "Courier New"';
   ctx.fillStyle = '#9fb0c2';
   for (const pt of parts) {
     const s = project(pt.p);
     if (!s) continue;
-    if (isQuark(pt)) {
-      // u/d подписываются, только когда нуклон крупно на экране
-      if (RAD_P * s[3] < 25) continue;
-      // подпись лежит на светлом диске нуклона — тёмным цветом
-      ctx.font = 'bold 11px "Courier New"';
-      ctx.fillStyle = '#1b2533';
-      ctx.fillText(SPECIES[pt.kind].label, s[0] + 4, s[1] - 4);
-      ctx.font = '12px "Courier New"';
-      ctx.fillStyle = '#9fb0c2';
-      continue;
-    }
     const dy = Math.max(12, pt.rad * s[3] + 10);
     ctx.fillText(SPECIES[pt.kind].label, s[0] - 6, s[1] - dy);
   }
@@ -606,6 +859,15 @@ function totalEnergy() {
       E -= F_ALPHA * K_V * kQ() * A.N * B.N * phi(r, Math.max(A.rad, B.rad));
     }
   }
+  if (CH.on) {
+    // стенка: U = −f(α)·kQ·N_i·N·φ(d) у каждого тела (снаружи — φ(0), константа)
+    // + пружина растяжения + движение радиуса
+    for (const A of parts) {
+      const d = CH.R - Math.hypot(A.p[0] - CH.c[0], A.p[1] - CH.c[1], A.p[2] - CH.c[2]);
+      E -= F_ALPHA_WALL * K_V * kQ() * A.N * CH.N * phi(Math.max(d, 0), CH.delta);
+    }
+    E += springU() + 0.5 * wallM() * CH.V * CH.V;
+  }
   return { E, Pm: Math.hypot(px[0], px[1], px[2]) };
 }
 
@@ -644,44 +906,37 @@ function frame() {
   fpsN++;
   if (now - fpsT > 500) { fps = fpsN / ((now - fpsT) / 1000); fpsN = 0; fpsT = now; }
 
-  const protons = parts.filter((q) => q.kind === 'p');
-  const neutrons = parts.filter((q) => q.kind === 'n');
+  // нуклоны — группы тел, их положение и скорость — центр масс группы
+  const nucs = nucleons().map((g) => ({ ...g, ...lump(g.bodies) }));
+  const protons = nucs.filter((g) => g.nk === 'p');
+  const neutrons = nucs.filter((g) => g.nk === 'n');
   const electrons = parts.filter((q) => q.kind === 'e');
   const p0 = protons[0], n0 = neutrons[0];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   let R = 0;
   for (let i = 0; i < protons.length; i++) {
     for (let j = i + 1; j < protons.length; j++) {
-      const d = Math.hypot(protons[j].p[0] - protons[i].p[0], protons[j].p[1] - protons[i].p[1], protons[j].p[2] - protons[i].p[2]);
+      const d = dist(protons[j].c, protons[i].c);
       if (!R || d < R) R = d;
     }
   }
-  const Rn = (p0 && n0)
-    ? Math.hypot(n0.p[0] - p0.p[0], n0.p[1] - p0.p[1], n0.p[2] - p0.p[2])
-    : 0;
-  const vn = (p0 && n0)
-    ? Math.hypot(n0.v[0] - p0.v[0], n0.v[1] - p0.v[1], n0.v[2] - p0.v[2])
-    : 0;
-  const quarks = parts.filter(isQuark);
-  const nucLine = (label, kind, core, total) => {
-    const f = QUARKS[kind];
-    const nu = f.filter((x) => x === 'u').length, nd = f.length - nu;
-    const mul = (k, M) => (k > 1 ? `${k}·` : '') + M.toFixed(2);
-    return `${label} = ${f.join(' ')}: N = ${core.toFixed(1)} (связь) + ${mul(nu, M_U)} (u) + ${mul(nd, M_D)} (d) = ${total}`;
-  };
+  const Rn = (p0 && n0) ? dist(n0.c, p0.c) : 0;
+  const vn = (p0 && n0) ? dist(n0.cv, p0.cv) : 0;
   const rnLine = n0 ? `\nR(p–n) = ${Rn.toFixed(2)} a₀ · v=${vn.toExponential(2)}` : '';
   const en = totalEnergy();
-  if (E0 === null) E0 = en.E;
-  const dE = E0 ? (en.E - E0) / Math.abs(E0) : 0;
+  if (E0 === null) { E0 = en.E; CH.lost = 0; }
+  // с камерой часть энергии уходит в вязкость стенки: баланс — E + потери
+  const lost = CH.on ? CH.lost : 0;
+  const dE = E0 ? (en.E + lost - E0) / Math.abs(E0) : 0;
   const counts = {
     p: protons.length, n: neutrons.length, e: electrons.length, a: atomIds().length,
-    pFree: protons.filter((q) => q.atom === -1).length,
+    pFree: protons.filter((g) => g.atom === -1).length,
     eFree: electrons.filter((q) => q.atom === -1).length,
   };
   sum.textContent =
-`W = Q·N · 3D${P.paused ? ' · пауза' : ''}
-p⁺ ${counts.p} · n⁰ ${counts.n} · e⁻ ${counts.e} · A ${counts.p + counts.n} · Z ${counts.p}
-кварки: u ${quarks.filter((q) => q.kind === 'u').length} · d ${quarks.filter((q) => q.kind === 'd').length} · тел ${parts.length}
-E = ${en.E.toExponential(4)} · ΔE/E = ${dE.toExponential(1)}
+`W = Q·N · 3D · ${P.scene === 'sandbox' ? 'песочница' : 'атомы'}${P.paused ? ' · пауза' : ''}
+p⁺ ${counts.p} · n⁰ ${counts.n} · e⁻ ${counts.e} · A ${counts.p + counts.n} · Z ${counts.p} · тел ${parts.length}
+E = ${en.E.toExponential(4)} · ΔE/E = ${dE.toExponential(1)}${CH.on ? ' (с потерями)' : ''}${CH.on ? `\nкамера: R = ${CH.R.toFixed(3)} · R₀ = ${CH.R0.toFixed(1)} · потери ${CH.lost.toExponential(2)}` : ''}
 t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
   if (more.open) det.textContent =
 `воздействие = качество × количество
@@ -689,14 +944,15 @@ Q = k_a·C1/(4πR²) — качество; N = V·q = h·S·q — количес
 W = Σ Q_j·N_j; F = f(α)·n_f·W, n_f = k_v·N; a = F/m
 k_a = k_v = f(α) = 1 · C1 = 4πG = ${P.C1.toExponential(2)}
 q = ${Q_DENS.toExponential(2)} у всех тел; N = V·q
-${nucLine('p⁺', 'p', M_CORE_P, M_P)}
-${nucLine('n⁰', 'n', M_CORE_N, M_N)}
-e⁻ — элементарен: N = ${M_E}
-кварки держит только W = Q·N массы связи (сильного взаимодействия нет)
+p⁺: N = ${M_P}, радиус ${RAD_P.toFixed(4)}
+n⁰: N = ${M_N}, радиус ${RAD_N.toFixed(4)}
+e⁻: N = ${M_E}, радиус ${RAD_E}
+только доказанные частицы с измеренной массой: p⁺, n⁰, e⁻
 R(p–p, min) = ${R ? R.toFixed(2) : '—'} a₀${rnLine}
 |p| = ${en.Pm.toExponential(1)} · сложность O(N²)
 без кулона, кора, БГП и тени`;
   syncPanel(counts);
+  syncCards();
 
 requestAnimationFrame(frame);
 }
@@ -708,38 +964,50 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space') { P.paused = !P.paused; e.preventDefault(); }
   if (e.key.toLowerCase() === 'r') reset();
   if (e.key.toLowerCase() === 'g') P.showField = !P.showField;
+  if (e.key.toLowerCase() === 't') P.showTrail = !P.showTrail;
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
 makePanel();
+makeCards();
+// на узком экране описание частиц свёрнуто, чтобы не закрывать сцену
+if (matchMedia('(max-width: 640px)').matches) document.getElementById('infoBox').open = false;
 document.getElementById('help').textContent =
 `мышь: drag — вращение, колесо — масштаб
 WASD — смещение, Q/E — вверх/вниз
 камера следит за центром масс
-Space — пауза · R — сброс · G — поле
+Space — пауза · R — сброс · G — поле · T — след
 
 Только W = Q·N: гравитация тел, без кулона, кора, БГП и тени.
 Начальные скорости — круговые орбиты из той же формулы (a = Q·N = v²/r).
 Свободные p⁺ и e⁻ появляются в покое; дальше их ведёт только W.
 Нейтрон держится только гравитацией; сильного взаимодействия нет.
-p⁺ = u u d, n⁰ = u d d: кварки (~1% массы) обращаются внутри
-«массы связи» (~99%), их держит только W = Q·N. e⁻ элементарен.
-Приблизьте колесом при «демо» — u/d видно внутри нуклонов.
+В модели только частицы, доказанные напрямую и с измеренной массой:
+p⁺, n⁰, e⁻ — каждая одно однородное тело.
+«Песочница» — пустая сцена: p⁺, n⁰, e⁻ добавляются по одной,
+в покое рядом с центром масс; всё дальше решает W.
+«Камера» — замкнутая упругая сфера. Стенка — источник с зарядом N
+и f(α) = −1: тело у стенки отталкивается по Q(d)·N, сильнее всего
+вплотную. У стенки вязкий слой (h): тело в нём тормозится тем
+сильнее, чем ближе к стенке, и толкает стенку. Радиус R растягивается
+и с затуханием (ζ) возвращается к R₀. Вязкость и затухание — добавка
+модели: энергия уходит в «потери», баланс — E + потери.
+Импульс тел при этом не сохраняется — стенка внешняя.
 При честном G движение невидимо — включите «демо» и нажмите сброс.
 Масштаб m_p=1836, m_n=1839, m_e=1. Числа модельные, не СИ.`;
 requestAnimationFrame(frame);
 
 window.__h2d = {
-  P, Q, QN, makeBody, makeNucleon, accelerate, step, totalEnergy, dynTime, reset,
-  M: { M_P, M_N, M_U, M_D, M_CORE_P, M_CORE_N, RAD_P, RAD_N },
+  P, CH, setChamber, Q, QN, lump, nucleons, makeBody, makeNucleon, accelerate, step, totalEnergy, dynTime, reset,
+  M: { M_P, M_N, RAD_P, RAD_N },
   get parts() { return parts; },
   set parts(v) { parts = v; },
   get R() {
-    const ps = parts.filter((q) => q.kind === 'p');
-    return ps.length > 1 ? Math.hypot(ps[1].p[0] - ps[0].p[0], ps[1].p[1] - ps[0].p[1], ps[1].p[2] - ps[0].p[2]) : 0;
+    const ps = nucleons().filter((g) => g.nk === 'p').map((g) => lump(g.bodies).c);
+    return ps.length > 1 ? Math.hypot(ps[1][0] - ps[0][0], ps[1][1] - ps[0][1], ps[1][2] - ps[0][2]) : 0;
   },
-  get A() { return parts.filter(isNucleon).length; },
-  get Z() { return parts.filter((q) => q.kind === 'p').length; },
+  get A() { return nucleons().length; },
+  get Z() { return nucleons().filter((g) => g.nk === 'p').length; },
   get time() { return time; },
 };
 </script>
