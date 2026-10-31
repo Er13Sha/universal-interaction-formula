@@ -6,33 +6,71 @@
   <title>W = Q·N в 3D — атомы, нуклоны и электроны</title>
   <link rel="icon" href="data:," />
   <style>
+    :root {
+      --bg: #000;
+      --panel: rgba(8, 14, 24, .82);
+      --line: rgba(120, 170, 220, .22);
+      --text: #dce6f0;
+      --muted: #8197ad;
+      --btn: rgba(18, 28, 44, .9);
+      --btn-hover: rgba(30, 46, 70, .95);
+      --accent: #5ab0ff;
+      --mono: "Courier New", monospace;
+    }
     html, body { height: 100%; }
-    body { margin: 0; background: #000; overflow: hidden; }
+    body { margin: 0; background: var(--bg); overflow: hidden; font-family: var(--mono); }
     canvas { display: block; width: 100vw; height: 100vh; }
     #ui {
-      position: absolute; top: 12px; left: 12px;
-      color: #fff; font-family: "Courier New", monospace;
-      text-shadow: 2px 2px 4px #000; line-height: 1.42; white-space: pre;
+      position: absolute; top: 12px; left: 12px; max-width: calc(100vw - 290px);
+      color: var(--text); text-shadow: 1px 1px 3px #000; line-height: 1.42;
       user-select: none; pointer-events: none; font-size: 12px;
     }
-    #hint {
-      position: absolute; top: 12px; right: 12px;
-      color: #7f93a8; font-family: "Courier New", monospace;
-      font-size: 12px; line-height: 1.45; text-align: right; white-space: pre;
-      pointer-events: none; text-shadow: 1px 1px 3px #000;
+    #ui pre { margin: 0; font: inherit; white-space: pre-wrap; }
+    #ui details { pointer-events: auto; margin-top: 6px; color: var(--muted); }
+    #ui summary { cursor: pointer; width: max-content; }
+    #panel {
+      position: absolute; top: 12px; right: 12px; width: 236px; box-sizing: border-box;
+      max-height: calc(100vh - 24px); overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 12px; color: var(--text); font-size: 12px;
     }
-    #warn {
-      position: absolute; right: 12px; bottom: 14px;
-      color: #8fa2b5; font-family: "Courier New", monospace;
-      opacity: .8; max-width: 440px; line-height: 1.3; font-size: 10px;
-      white-space: pre-wrap; pointer-events: none; text-align: right;
+    #panel h2 {
+      margin: 12px 0 6px; font-size: 11px; font-weight: normal; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    #panel h2:first-child { margin-top: 0; }
+    #panel .row { display: grid; grid-template-columns: 1fr 32px 64px 32px; align-items: center; gap: 4px; margin: 4px 0; }
+    #panel .lbl { font-size: 14px; }
+    #panel .cnt { text-align: center; font-size: 14px; }
+    #panel .cnt small { font-size: 10px; color: var(--muted); }
+    #panel button {
+      background: var(--btn); color: var(--text); border: 1px solid var(--line);
+      border-radius: 6px; padding: 5px 6px; font: inherit; cursor: pointer; min-height: 28px;
+    }
+    #panel button:hover:not(:disabled) { background: var(--btn-hover); }
+    #panel button:disabled { opacity: .35; cursor: default; }
+    #panel button.on { border-color: var(--accent); color: var(--accent); }
+    #panel .row button { font-size: 16px; padding: 0; }
+    #panel .seg { display: flex; gap: 4px; }
+    #panel .seg button { flex: 1; white-space: nowrap; font-size: 11px; padding: 5px 2px; }
+    #gVal { white-space: pre; }
+    #panel input[type=range] { width: 100%; accent-color: var(--accent); }
+    #panel .note { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+    #panel details { margin-top: 12px; color: var(--muted); }
+    #panel summary { cursor: pointer; }
+    #panel pre { margin: 6px 0 0; font: inherit; font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+    @media (max-width: 640px) {
+      #panel { top: auto; bottom: 0; right: 0; left: 0; width: auto; max-height: 45vh; border-radius: 10px 10px 0 0; }
+      #ui { max-width: calc(100vw - 24px); font-size: 11px; }
     }
   </style>
 </head>
 <body>
-  <div id="ui"></div>
-  <div id="hint"></div>
-  <div id="warn"></div>
+  <div id="ui">
+    <pre id="sum"></pre>
+    <details id="more"><summary>формула и N = V·q</summary><pre id="det"></pre></details>
+  </div>
+  <div id="panel"></div>
   <canvas id="c"></canvas>
 
 <script type="module">
@@ -42,9 +80,9 @@
 
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const ui = document.getElementById('ui');
-const hint = document.getElementById('hint');
-const warn = document.getElementById('warn');
+const sum = document.getElementById('sum');
+const det = document.getElementById('det');
+const more = document.getElementById('more');
 
 const P = {
   G: 2.4e-43,
@@ -169,79 +207,130 @@ let parts = makeParts();
 let time = 0;
 let nextAtom = 1;
 
-function addAtom() {
-  const d = randDir();
-  const r = 2.3 + Math.random() * 1.2;
-  parts.push(...makeAtom(nextAtom++, [d[0] * r, d[1] * r * 0.4, d[2] * r]));
+// Состав системы. Тела с atom = −1 — свободные (без орбиты, в покое).
+let E0 = null; // E на момент последнего изменения состава или G — от него считается ΔE/E
+const changed = () => { E0 = null; };
+const atomIds = () => [...new Set(parts.filter((q) => q.kind === 'p' && q.atom >= 0).map((q) => q.atom))];
+const isFree = (kind) => (q) => q.kind === kind && q.atom === -1;
+function removeLast(pred) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (pred(parts[i])) { parts.splice(i, 1); changed(); return; }
+  }
 }
-function addNeutron() {
-  const protons = parts.filter((q) => q.kind === 'p');
-  if (!protons.length) return;
-  const withN = new Set(parts.filter((q) => q.kind === 'n').map((q) => q.atom));
-  const host = protons.find((q) => !withN.has(q.atom)) || protons[protons.length - 1];
-  const nucleus = parts.filter((q) => q.kind !== 'e' && q.atom === host.atom);
-  const index = nucleus.length - 1;
-  parts.push(orbit(makeBody('n', host.atom, host.p), nucleus, P.rn * (1 + 0.35 * index)));
+function centerOfMass() {
+  let mx = 0, my = 0, mz = 0, mm = 0;
+  for (const p of parts) { mx += p.m * p.p[0]; my += p.m * p.p[1]; mz += p.m * p.p[2]; mm += p.m; }
+  return mm ? [mx / mm, my / mm, mz / mm] : [0, 0, 0];
+}
+function nearCOM(rMin, rMax) {
+  const c = centerOfMass(), d = randDir();
+  const r = rMin + Math.random() * (rMax - rMin);
+  return [c[0] + d[0] * r, c[1] + d[1] * r * 0.4, c[2] + d[2] * r];
+}
+
+function addAtom() {
+  parts.push(...makeAtom(nextAtom++, nearCOM(2.3, 3.5)));
+  changed();
 }
 function removeAtom() {
-  const protons = parts.filter((q) => q.kind === 'p');
-  if (protons.length <= 1) return;
-  const atom = protons[protons.length - 1].atom;
+  const ids = atomIds();
+  if (!ids.length) return;
+  const atom = ids[ids.length - 1];
   for (let i = parts.length - 1; i >= 0; i--) {
     if (parts[i].atom === atom) parts.splice(i, 1);
   }
+  changed();
 }
-function removeNeutron() {
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].kind === 'n') { parts.splice(i, 1); return; }
-  }
+function addNeutron() {
+  const ids = atomIds();
+  if (!ids.length) return;
+  const withN = new Set(parts.filter((q) => q.kind === 'n').map((q) => q.atom));
+  const atom = ids.find((a) => !withN.has(a)) ?? ids[ids.length - 1];
+  const nucleus = parts.filter((q) => q.kind !== 'e' && q.atom === atom);
+  const index = nucleus.length - 1;
+  const host = nucleus[0];
+  parts.push(orbit(makeBody('n', atom, host.p), nucleus, P.rn * (1 + 0.35 * index)));
+  changed();
 }
+const removeNeutron = () => removeLast((q) => q.kind === 'n');
+function addProton() {
+  parts.push(makeBody('p', -1, nearCOM(1.5, 3)));
+  changed();
+}
+const removeProton = () => removeLast(isFree('p'));
 function addElectron() {
-  const d = randDir();
-  const r = 0.8 + Math.random() * 1.4;
-  parts.push(makeBody('e', -1, [d[0] * r, d[1] * r * 0.4, d[2] * r]));
+  parts.push(makeBody('e', -1, nearCOM(0.8, 2.2)));
+  changed();
 }
-function removeElectron() {
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].kind === 'e' && parts[i].atom === -1) { parts.splice(i, 1); return; }
+const removeElectron = () => removeLast(isFree('e'));
+function reset() {
+  parts = makeParts(); time = 0; nextAtom = 1;
+  changed();
+}
+function setG(G) {
+  P.G = G;
+  P.C1 = 4 * Math.PI * G;
+  changed();
+}
+
+// ---------- панель ----------
+const G_HONEST = 2.4e-43;
+const OPS = {
+  p: [removeProton, addProton],
+  n: [removeNeutron, addNeutron],
+  e: [removeElectron, addElectron],
+  a: [removeAtom, addAtom],
+};
+const ROW_TIPS = {
+  p: '+ свободный протон в покое рядом с центром масс\n− убирает последний свободный протон',
+  n: '+ нейтрон на орбиту вокруг ядра атома\n− убирает последний нейтрон',
+  e: '+ свободный электрон в покое рядом с центром масс\n− убирает последний свободный электрон',
+  a: '+ атом дейтерия p⁺ + n⁰ + e⁻\n− убирает последний атом целиком',
+};
+const panel = document.getElementById('panel');
+function makePanel() {
+  const row = (k, label) =>
+    `<div class="row" data-k="${k}" title="${ROW_TIPS[k]}"><span class="lbl">${label}</span>` +
+    `<button data-op="0" aria-label="убрать ${label}">−</button><span class="cnt"></span>` +
+    `<button data-op="1" aria-label="добавить ${label}">+</button></div>`;
+  panel.innerHTML =
+    `<h2>Частицы</h2>${row('p', 'p⁺')}${row('n', 'n⁰')}${row('e', 'e⁻')}${row('a', 'атом')}` +
+    `<h2>Постоянная G</h2>` +
+    `<input id="gSl" type="range" min="-45" max="6" step="0.01" aria-label="log10 G">` +
+    `<div id="gVal" class="note"></div>` +
+    `<div class="seg"><button data-g="${G_HONEST}">честный</button><button data-g="1e-5">демо</button><button data-g="1">1</button></div>` +
+    `<h2>Симуляция</h2>` +
+    `<div class="seg"><button id="bPause"></button><button id="bReset">⟳ сброс</button><button id="bField">поле</button></div>` +
+    `<details><summary>? подсказки</summary><pre id="help"></pre></details>`;
+
+  panel.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    b.blur(); // чтобы Space не нажимал кнопку повторно
+    if (b.dataset.op) OPS[b.closest('.row').dataset.k][+b.dataset.op]();
+    else if (b.dataset.g) setG(Number(b.dataset.g));
+    else if (b.id === 'bPause') P.paused = !P.paused;
+    else if (b.id === 'bReset') reset();
+    else if (b.id === 'bField') P.showField = !P.showField;
+  });
+  panel.querySelector('#gSl').addEventListener('input', (e) => setG(Math.pow(10, Number(e.target.value))));
+}
+function syncPanel(c) {
+  const free = { p: c.pFree, e: c.eFree };
+  const total = { p: c.p, n: c.n, e: c.e, a: c.a };
+  const canDel = { p: c.pFree > 0, n: c.n > 0, e: c.eFree > 0, a: c.a > 0 };
+  for (const r of panel.querySelectorAll('.row')) {
+    const k = r.dataset.k;
+    r.querySelector('.cnt').innerHTML = total[k] + (free[k] ? `<small> св ${free[k]}</small>` : '');
+    r.querySelector('[data-op="0"]').disabled = !canDel[k];
   }
-}
-function makeG() {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:absolute;right:12px;bottom:80px;color:#9fb0c2;font-family:"Courier New",monospace;font-size:11px;background:rgba(8,14,24,.55);border:1px solid rgba(120,170,220,.2);border-radius:8px;padding:8px 10px;';
-  el.innerHTML = '<div>log10 G <input id="gSl" type="range" min="-45" max="6" step="0.1" value="-42.6" style="width:140px"></div><div id="gVal"></div>';
-  document.body.appendChild(el);
-  const sl = el.querySelector('#gSl'), val = el.querySelector('#gVal');
-  const upd = () => {
-    const lv = sl && sl.value !== undefined && sl.value !== '' ? Number(sl.value) : NaN;
-    if (!Number.isFinite(lv)) return;
-    P.G = Math.pow(10, lv);
-    P.C1 = 4 * Math.PI * P.G;
-    val.textContent = 'G=' + P.G.toExponential(2) + '  C1=4πG=' + P.C1.toExponential(2);
-  };
-  sl.addEventListener('input', upd);
-  upd();
-}
-function makeBar() {
-  const bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;font-family:"Courier New",monospace;';
-  bar.innerHTML = '<button id="addA">+ атом</button><button id="delA">− атом</button><button id="addN">+ n⁰</button><button id="delN">− n⁰</button><button id="addE">+ e⁻</button><button id="delE">− e⁻</button><button id="demo">демо G</button>';
-  for (const b of bar.querySelectorAll('button')) {
-    b.style.cssText = 'background:rgba(18,28,44,.8);color:#9fb7d4;border:1px solid rgba(120,170,220,.35);padding:6px 12px;font:inherit;font-size:13px;border-radius:6px;cursor:pointer;';
-  }
-  document.body.appendChild(bar);
-  bar.querySelector('#addA').onclick = addAtom;
-  bar.querySelector('#delA').onclick = removeAtom;
-  bar.querySelector('#addN').onclick = addNeutron;
-  bar.querySelector('#delN').onclick = removeNeutron;
-  bar.querySelector('#addE').onclick = addElectron;
-  bar.querySelector('#delE').onclick = removeElectron;
-  bar.querySelector('#demo').onclick = () => {
-    const sl = document.getElementById('gSl');
-    if (!sl) return;
-    sl.value = '-5';
-    sl.dispatchEvent(new Event('input'));
-  };
+  panel.querySelector('[data-k="n"] [data-op="1"]').disabled = c.a === 0;
+  const sl = panel.querySelector('#gSl');
+  if (document.activeElement !== sl) sl.value = Math.log10(P.G).toFixed(2);
+  panel.querySelector('#gVal').textContent = `G = ${P.G.toExponential(2)}\nC1 = 4πG = ${P.C1.toExponential(2)}`;
+  for (const b of panel.querySelectorAll('[data-g]')) b.classList.toggle('on', Number(b.dataset.g) === P.G);
+  panel.querySelector('#bPause').textContent = P.paused ? '▶ пуск' : '⏸ пауза';
+  panel.querySelector('#bField').classList.toggle('on', P.showField);
 }
 // W_i = Σ_j Q_j·N_j (вектор к источнику), F_i = f(α)·n_f·W_i, n_f = k_v·N_i, a_i = F_i/m_i.
 function accelerate() {
@@ -482,16 +571,13 @@ function frame() {
     P.oy += up2 * sp2;
   }
 
-  let mx = 0, my = 0, mz = 0, mm = 0;
-  for (const p of parts) {
-    mx += p.m * p.p[0]; my += p.m * p.p[1]; mz += p.m * p.p[2]; mm += p.m;
-  }
+  const c = centerOfMass();
   const kf = 1 - Math.exp(-realDt * 3);
-  P.tx += (mx / mm + P.ox - P.tx) * kf;
-  P.ty += (my / mm + P.oy - P.ty) * kf;
-  P.tz += (mz / mm + P.oz - P.tz) * kf;
+  P.tx += (c[0] + P.ox - P.tx) * kf;
+  P.ty += (c[1] + P.oy - P.ty) * kf;
+  P.tz += (c[2] + P.oz - P.tz) * kf;
 
-  const info = draw();
+  draw();
 
   fpsN++;
   if (now - fpsT > 500) { fps = fpsN / ((now - fpsT) / 1000); fpsN = 0; fpsT = now; }
@@ -518,64 +604,63 @@ function frame() {
     : 'n⁰: —';
   const rnLine = n0 ? `\nR(p–n) = ${Rn.toFixed(2)} a₀ · v=${vn.toExponential(2)}` : '';
   const en = totalEnergy();
-  ui.textContent =
-`W = Q·N · 3D
-воздействие = качество × количество
-
+  if (E0 === null) E0 = en.E;
+  const dE = E0 ? (en.E - E0) / Math.abs(E0) : 0;
+  const counts = {
+    p: protons.length, n: neutrons.length, e: electrons.length, a: atomIds().length,
+    pFree: protons.filter((q) => q.atom === -1).length,
+    eFree: electrons.filter((q) => q.atom === -1).length,
+  };
+  sum.textContent =
+`W = Q·N · 3D${P.paused ? ' · пауза' : ''}
+p⁺ ${counts.p} · n⁰ ${counts.n} · e⁻ ${counts.e} · A ${counts.p + counts.n} · Z ${counts.p}
+E = ${en.E.toExponential(4)} · ΔE/E = ${dE.toExponential(1)}
+t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
+  if (more.open) det.textContent =
+`воздействие = качество × количество
 Q = k_a·C1/(4πR²) — качество; N = V·q = h·S·q — количество (заряд)
 W = Σ Q_j·N_j; F = f(α)·n_f·W, n_f = k_v·N; a = F/m
-тел: ${parts.length} · p⁺ ${protons.length} · n⁰ ${neutrons.length} · e⁻ ${electrons.length}
-A = ${protons.length + neutrons.length} · Z = ${protons.length} (всего)
+k_a = k_v = f(α) = 1 · C1 = 4πG = ${P.C1.toExponential(2)}
 p⁺: q=${P.qP.toExponential(2)} · V=${p0 ? p0.V.toExponential(2) : '—'} → N=${p0 ? p0.N.toFixed(1) : '—'} (m=${p0 ? p0.m.toFixed(1) : '—'})
 ${nLine}
 e⁻: q=${P.qE.toExponential(2)} · V=${e0 ? e0.V.toExponential(2) : '—'} → N=${e0 ? e0.N.toFixed(1) : '—'} (m=${e0 ? e0.m.toFixed(1) : '—'})
 R(p–p, min) = ${R ? R.toFixed(2) : '—'} a₀${rnLine}
-E = ${en.E.toExponential(6)} (KE + U) · |p| = ${en.Pm.toExponential(1)}
-G = ${P.G.toExponential(2)} · C1 = 4πG = ${P.C1.toExponential(2)}
-k_a = k_v = f(α) = 1 — без кулона, кора, БГП и тени
-сложность: O(N²)
-t = ${time.toFixed(1)} · FPS = ${fps.toFixed(0)}`;
+|p| = ${en.Pm.toExponential(1)} · сложность O(N²)
+без кулона, кора, БГП и тени`;
+  syncPanel(counts);
 
 requestAnimationFrame(frame);
 }
 
-hint.textContent =
-`drag — вращение
-колесо — масштаб
-WASD — смещение
-Q/E — вверх/вниз
-камера следит за COM
-Space — пауза
-R — сброс
-G — поле
-кнопка + n⁰ — нейтрон на орбите
-кнопка — демо G`;
-
-warn.textContent =
-`3D. Только W = Q·N: гравитация тел, без кулона, кора, БГП и тени.
-Начальные скорости — круговые орбиты из той же формулы (a = Q·N = v²/r).
-Нейтрон держится только гравитацией — на орбите rn=0.45; сильного взаимодействия нет.
-При честном G орбита невидима, при «демо G» + R — видна.
-масштаб m_p=1836, m_n=1839, m_e=1. Форма и числа — модельные, не СИ.`;
-
 const keys = {};
 addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
   keys[e.key.toLowerCase()] = true;
   if (e.code === 'Space') { P.paused = !P.paused; e.preventDefault(); }
-  if (e.key.toLowerCase() === 'r') { parts = makeParts(); time = 0; }
+  if (e.key.toLowerCase() === 'r') reset();
   if (e.key.toLowerCase() === 'g') P.showField = !P.showField;
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
+makePanel();
+document.getElementById('help').textContent =
+`мышь: drag — вращение, колесо — масштаб
+WASD — смещение, Q/E — вверх/вниз
+камера следит за центром масс
+Space — пауза · R — сброс · G — поле
+
+Только W = Q·N: гравитация тел, без кулона, кора, БГП и тени.
+Начальные скорости — круговые орбиты из той же формулы (a = Q·N = v²/r).
+Свободные p⁺ и e⁻ появляются в покое; дальше их ведёт только W.
+Нейтрон держится только гравитацией; сильного взаимодействия нет.
+При честном G движение невидимо — включите «демо» и нажмите сброс.
+Масштаб m_p=1836, m_n=1839, m_e=1. Числа модельные, не СИ.`;
 requestAnimationFrame(frame);
 
-makeBar();
-makeG();
 window.__h2d = {
-  P, Q, QN, makeBody, accelerate, step, totalEnergy, dynTime,
+  P, Q, QN, makeBody, accelerate, step, totalEnergy, dynTime, reset,
   get parts() { return parts; },
   set parts(v) { parts = v; },
-  reset() { parts = makeParts(); time = 0; },
   get R() {
     const ps = parts.filter((q) => q.kind === 'p');
     return ps.length > 1 ? Math.hypot(ps[1].p[0] - ps[0].p[0], ps[1].p[1] - ps[0].p[1], ps[1].p[2] - ps[0].p[2]) : 0;
